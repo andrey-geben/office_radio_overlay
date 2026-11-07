@@ -3,7 +3,6 @@ import sounddevice as sd
 import numpy as np
 import threading
 import queue
-import time
 import config
 
 
@@ -13,7 +12,7 @@ class HardwareOutput:
     def __init__(self):
         self._device = None
         self._stream = None
-        self._queue = queue.Queue(maxsize=100)
+        self._queue = queue.Queue(maxsize=200)
         self._running = False
         self._thread = None
         self._lock = threading.Lock()
@@ -40,6 +39,7 @@ class HardwareOutput:
         with self._lock:
             self._device = device_index
             self._running = True
+        # чистим очередь
         while True:
             try:
                 self._queue.get_nowait()
@@ -63,6 +63,7 @@ class HardwareOutput:
         try:
             self._queue.put_nowait(chunk_bytes)
         except queue.Full:
+            # выкидываем самый старый, чтобы не копить задержку
             try:
                 self._queue.get_nowait()
             except queue.Empty:
@@ -83,7 +84,7 @@ class HardwareOutput:
     def _run(self):
         block = config.BLOCK_SIZE
         silence = np.zeros(block, dtype=np.int16)
-        buffer = np.array([], dtype=np.int16)
+        pending = np.array([], dtype=np.int16)
 
         try:
             stream = sd.OutputStream(
@@ -92,30 +93,39 @@ class HardwareOutput:
                 channels=config.CHANNELS,
                 dtype="int16",
                 blocksize=block,
+                latency='low',
             )
             stream.start()
             with self._lock:
                 self._stream = stream
 
             while self._running:
-                drained = False
+                # забираем всё, что есть в очереди
                 while True:
                     try:
                         raw = self._queue.get_nowait()
-                        buffer = np.concatenate([buffer, np.frombuffer(raw, dtype=np.int16)])
-                        drained = True
+                        arr = np.frombuffer(raw, dtype=np.int16)
+                        if len(arr) > 0:
+                            pending = np.concatenate([pending, arr]) if len(pending) else arr
                     except queue.Empty:
                         break
 
-                while len(buffer) >= block:
-                    stream.write(buffer[:block])
-                    buffer = buffer[block:]
+                # отдаём полные блоки
+                while len(pending) >= block:
+                    stream.write(pending[:block])
+                    pending = pending[block:]
 
-                if len(buffer) < block and not drained:
-                    if len(buffer) < block // 2:
-                        stream.write(silence)
-                    else:
-                        time.sleep(0.005)
+                # недобор — дополняем тишиной (без sleep!)
+                if len(pending) > 0:
+                    # оставшиеся сэмплы дополняем тишиной до полного блока
+                    pad = block - len(pending)
+                    padded = np.concatenate([pending, np.zeros(pad, dtype=np.int16)])
+                    stream.write(padded)
+                    pending = np.array([], dtype=np.int16)
+                elif len(pending) == 0:
+                    # очередь пуста — пишем блок тишины, чтобы не было underrun
+                    stream.write(silence)
+
         except Exception as e:
             print(f"Ошибка аппаратного выхода: {e}")
         finally:

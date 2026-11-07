@@ -699,7 +699,7 @@ class RadioOverlayEngine:
                         self._update_state(last_event="streaming")
 
                 self._push_output(chunk)
-                time.sleep(0.005)
+                # Без sleep: ffmpeg отдаёт ровно по block_size, нет накопления задержки
         except Exception as e:
             logger.exception("Ошибка движка")
             self._update_state(error=str(e))
