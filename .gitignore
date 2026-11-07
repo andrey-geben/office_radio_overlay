@@ -4,12 +4,16 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
-dist/
 *.egg-info/
 .installed.cfg
 *.egg
 .idea/
+
+# PyInstaller
+build/
+dist/
+*.zip
+*.exe
 
 # Virtual environments
 .venv/
@@ -44,5 +48,3 @@ logs/
 *.tmp
 *.bak
 assets/users.json
-
-.idea/

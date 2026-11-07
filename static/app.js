@@ -10,6 +10,39 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 }[c]));
 
+const ROLE = (document.body.dataset.role || 'operator').trim();
+const IS_ADMIN = ROLE === 'admin';
+
+// ==================== Модалки ====================
+function openModal(id) {
+    const m = document.getElementById(id);
+    if (!m) return;
+    m.classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+function closeModal(id) {
+    const m = id ? document.getElementById(id) : null;
+    if (m) m.classList.remove('open');
+    document.body.style.overflow = '';
+}
+function closeAllModals() {
+    document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open'));
+    document.body.style.overflow = '';
+}
+document.querySelectorAll('[data-open]').forEach(btn => {
+    btn.onclick = () => openModal(btn.dataset.open);
+});
+document.querySelectorAll('[data-close]').forEach(el => {
+    el.onclick = () => {
+        const modal = el.closest('.modal');
+        if (modal) closeModal(modal.id);
+        else closeAllModals();
+    };
+});
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeAllModals();
+});
+
 // ==================== Стрелочные индикаторы ====================
 function setMeter(id, value, min, max) {
     const el = $(id);
@@ -26,17 +59,16 @@ function drawEqualizer(spectrum) {
     if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.clientWidth;
-    const H = canvas.clientHeight || 80;
+    const H = canvas.clientHeight || 90;
     canvas.width = W * dpr;
     canvas.height = H * dpr;
     const ctx = canvas.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
 
-    const bars = spectrum.length || 16;
-    const totalW = W;
-    const barW = (totalW / bars) * 0.7;
-    const gap = (totalW / bars) * 0.3;
+    const bars = spectrum.length || 24;
+    const barW = (W / bars) * 0.72;
+    const gap = (W / bars) * 0.28;
     for (let i = 0; i < bars; i++) {
         const v = Math.max(0, Math.min(1, spectrum[i] || 0));
         const h = v * (H - 4);
@@ -44,19 +76,17 @@ function drawEqualizer(spectrum) {
         const y = H - h;
         const grad = ctx.createLinearGradient(0, H, 0, 0);
         grad.addColorStop(0, '#3aa83a');
-        grad.addColorStop(0.55, '#d4c44a');
+        grad.addColorStop(0.5, '#d4c44a');
+        grad.addColorStop(0.85, '#e07a3a');
         grad.addColorStop(1, '#c83a3a');
         ctx.fillStyle = grad;
         ctx.fillRect(x, y, barW, h);
-        // отражение сверху — яркая точка
-        if (v > 0.1) {
-            ctx.fillStyle = 'rgba(255,230,150,0.6)';
+        if (v > 0.08) {
+            ctx.fillStyle = 'rgba(255,230,150,0.7)';
             ctx.fillRect(x, y, barW, 2);
         }
     }
-    // сетка
-    ctx.strokeStyle = 'rgba(60,40,25,0.4)';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(60,40,25,0.3)';
     for (let i = 1; i < 4; i++) {
         const y = (H / 4) * i;
         ctx.beginPath();
@@ -66,15 +96,15 @@ function drawEqualizer(spectrum) {
     }
 }
 
-// ==================== Гистограмма ====================
+// ==================== Гистограмма субтонов ====================
 function drawToneHistogram(hist) {
     const canvas = $('tone-canvas');
     if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.clientWidth;
-    const H = 100;
-    canvas.width = W * dpr; canvas.height = H * dpr;
-    canvas.style.height = H + 'px';
+    const H = canvas.clientHeight || 90;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
     const ctx = canvas.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
@@ -89,9 +119,11 @@ function drawToneHistogram(hist) {
     ctx.strokeStyle = 'rgba(60,40,25,0.3)';
     for (let i = 1; i <= 3; i++) {
         const y = padY + plotH * (i / 4);
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
     }
-
     for (let i = 0; i < buckets.length; i++) {
         const b = buckets[i];
         const total = b.ctcss + b.dcs;
@@ -149,14 +181,18 @@ function renderStatus(state, settings) {
     $('event').textContent = state.last_event || '—';
     $('error').textContent = state.error || '—';
     $('seconds-since-tone').textContent = state.seconds_since_tone ?? 0;
-    $('btn-start').disabled = state.running;
-    $('btn-stop').disabled = !state.running;
+
+    const btnStart = $('btn-start');
+    const btnStop = $('btn-stop');
+    if (btnStart) btnStart.disabled = state.running;
+    if (btnStop) btnStop.disabled = !state.running;
 
     let nowText;
     if (state.sip_active) nowText = '📞 SIP-звонок';
     else if (!state.running) nowText = '⏹ остановлен';
+    else if (state.announcement_active && state.playing_name) nowText = `🔴 ${state.playing_name}`;
     else if (state.announcement_active) nowText = '🔴 объявление';
-    else if (state.using_reserve) nowText = '🟡 резервный источник';
+    else if (state.using_reserve) nowText = '🟡 резерв';
     else nowText = '🟢 трансляция';
     $('onair-text').textContent = nowText;
 
@@ -184,12 +220,13 @@ function fillForm(s) {
         const el = $(k);
         if (el) el.value = s[k];
     }
-    $('simulate').checked = !!s.simulate_tone;
-    $('tone_timeout_enabled').checked = !!s.tone_timeout_enabled;
-    $('fallback_enabled').checked = !!s.fallback_enabled;
+    if ($('simulate')) $('simulate').checked = !!s.simulate_tone;
+    if ($('tone_timeout_enabled')) $('tone_timeout_enabled').checked = !!s.tone_timeout_enabled;
+    if ($('fallback_enabled')) $('fallback_enabled').checked = !!s.fallback_enabled;
 }
 
 function updateSourceUI(s) {
+    if (!$('source-url')) return;
     const type = s.source_type || 'stream';
     const r = document.querySelector(`input[name="source_type"][value="${type}"]`);
     if (r) r.checked = true;
@@ -197,23 +234,25 @@ function updateSourceUI(s) {
     $('source-device').style.display = type === 'device' ? '' : 'none';
     $('source-url').value = s.radio_url || '';
     const sel = $('source-device-select');
-    sel.value = s.input_device != null ? String(s.input_device) : '';
+    if (sel) sel.value = s.input_device != null ? String(s.input_device) : '';
 }
 
 // ==================== Объявления ====================
 function scheduleText(it) {
     const a = it.start_time, b = it.end_time, lim = it.repeat_limit || 0;
+    const interval = it.min_interval_minutes || 0;
     const parts = [];
     if (a && b) parts.push(`${a}–${b}`);
     else if (a) parts.push(`с ${a}`);
-    else if (b) parts.push(`до ${b}`);
-    else parts.push('весь день');
-    if (lim > 0) parts.push(`≤${lim}`);
+    else parts.push('—');
+    if (lim > 0) parts.push(`≤${lim}/день`);
+    if (interval > 0) parts.push(`≥${interval}м`);
     return parts.join(' · ');
 }
 
 function renderAnnouncements(items, activeId) {
     const tb = $('ann-tbody');
+    if (!tb) return;
     if (!items.length) {
         tb.innerHTML = '<tr><td colspan="7" class="empty">Загрузок пока нет</td></tr>';
         return;
@@ -225,8 +264,9 @@ function renderAnnouncements(items, activeId) {
         const lim = it.repeat_limit > 0 ? `/${it.repeat_limit}` : '';
         const sizeKb = Math.round(it.size / 1024);
         const last = it.last_played ? it.last_played.replace('T', ' ').slice(0, 19) : '—';
+        const isPriority = it.id === activeId;
         tr.innerHTML = `
-            <td class="icon">${it.id === activeId ? '🔊' : ''}</td>
+            <td class="icon">${isPriority ? '🎯' : ''}</td>
             <td>
                 <div class="fname">${esc(it.original_name)}</div>
                 <div class="fdesc">${esc(it.description || '—')}</div>
@@ -237,53 +277,168 @@ function renderAnnouncements(items, activeId) {
             <td class="counter">${it.plays_total ?? 0}</td>
             <td class="small">${last}</td>
             <td class="actions">
-                <button class="btn-sm btn-activate" data-id="${it.id}" ${it.id === activeId ? 'disabled' : ''}>
-                    ${it.id === activeId ? 'Активно' : 'Активировать'}
+                <button class="btn-sm btn-activate" data-id="${it.id}"
+                        title="${isPriority ? 'Снять приоритет' : 'Сделать приоритетным'}">
+                    ${isPriority ? '🎯 Снять' : '🎯 Приоритет'}
                 </button>
                 <button class="btn-sm btn-edit" data-id="${it.id}">Расписание</button>
                 <button class="btn-sm btn-delete" data-id="${it.id}">Удалить</button>
             </td>`;
         tb.appendChild(tr);
     }
-    tb.querySelectorAll('.btn-activate').forEach(b => b.onclick = () => activateAnn(b.dataset.id));
+    tb.querySelectorAll('.btn-activate').forEach(b => b.onclick = () => togglePriority(b.dataset.id, activeId));
     tb.querySelectorAll('.btn-delete').forEach(b => b.onclick = () => deleteAnn(b.dataset.id));
     tb.querySelectorAll('.btn-edit').forEach(b =>
         b.onclick = () => editSchedule(b.dataset.id, items.find(x => x.id === b.dataset.id))
     );
 }
 
-async function activateAnn(id) {
-    await fetch(`/api/announcements/${id}/activate`, { method: 'POST' });
+async function togglePriority(id, activeId) {
+    const isActive = (id === activeId);
+    await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active_announcement_id: isActive ? null : id }),
+    });
+    formInitialized = false;
     refreshAll();
 }
+
 async function deleteAnn(id) {
     if (!confirm('Удалить это объявление?')) return;
     await fetch(`/api/announcements/${id}`, { method: 'DELETE' });
     refreshAll();
 }
+
 async function editSchedule(id, item) {
-    const start = prompt('Действует с (HH:MM, пусто = весь день):', item.start_time || '');
+    const start = prompt('Действует с (HH:MM):', item.start_time || '');
     if (start === null) return;
     const end = prompt('Действует до (HH:MM, пусто = без ограничения):', item.end_time || '');
     if (end === null) return;
     const lim = prompt('Повторов в день (0 = без лимита):', item.repeat_limit || 0);
     if (lim === null) return;
-    await fetch(`/api/announcements/${id}/schedule`, {
+    const interval = prompt('Мин. интервал между показами, мин (0 = без паузы):', item.min_interval_minutes || 0);
+    if (interval === null) return;
+    const r = await fetch(`/api/announcements/${id}/schedule`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             start_time: start || null,
             end_time: end || null,
-            repeat_limit: parseInt(lim) || 0
+            repeat_limit: parseInt(lim) || 0,
+            min_interval_minutes: parseInt(interval) || 0,
         }),
     });
+    const data = await r.json();
+    if (!data.ok) alert('❌ ' + (data.error || 'ошибка'));
     refreshAll();
+}
+
+// ==================== Очередь в эфир ====================
+function renderQueue(items, playingId) {
+    const box = $('queue-list');
+    if (!box) return;
+    if (!items.length) {
+        box.innerHTML = '<div class="queue-empty">Нет объявлений — загрузите через «📢 Объявления»</div>';
+        return;
+    }
+    const enriched = items.map((it, idx) => {
+        let st = it.queue_state || 'blocked';
+        if (playingId && it.id === playingId) st = 'playing';
+        return { ...it, _idx: idx + 1, _state: st };
+    });
+    const order = { playing: 0, ready: 1, cooldown: 2, blocked: 3 };
+    enriched.sort((a, b) => {
+        const d = order[a._state] - order[b._state];
+        if (d !== 0) return d;
+        return (b.progress || 0) - (a.progress || 0);
+    });
+
+    box.innerHTML = '';
+    for (const it of enriched) {
+        const pct = Math.round((it.progress || 0) * 100);
+        const div = document.createElement('div');
+        div.className = `queue-item-vert state-${it._state}`;
+        div.title = `${it.original_name} · ${it.queue_hint || ''}`;
+        div.innerHTML = `
+            <div class="queue-num-big">#${it._idx}</div>
+            <div class="queue-led-vert">
+                <div class="queue-led-fill" style="height:${pct}%"></div>
+            </div>
+            <div class="queue-hint-vert">${esc(it.queue_hint || '')}</div>
+        `;
+        box.appendChild(div);
+    }
+}
+
+// ==================== Пользователи ====================
+async function loadUsers() {
+    if (!IS_ADMIN) return;
+    try {
+        const r = await fetch('/api/users');
+        if (!r.ok) return;
+        const data = await r.json();
+        renderUsers(data.items || []);
+    } catch (e) { console.error('loadUsers', e); }
+}
+
+function renderUsers(items) {
+    const tb = $('users-tbody');
+    if (!tb) return;
+    if (!items.length) {
+        tb.innerHTML = '<tr><td colspan="5" class="empty">Пользователей нет</td></tr>';
+        return;
+    }
+    tb.innerHTML = '';
+    for (const u of items) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><b>${esc(u.username)}</b></td>
+            <td>${u.role === 'admin' ? '🔑 админ' : '👤 оператор'}</td>
+            <td class="small">${esc(u.created_at || '—')}</td>
+            <td>${u.must_change_password ? '⚠️ да' : '—'}</td>
+            <td class="actions">
+                <button class="btn-sm btn-reset-pass" data-user="${esc(u.username)}">Сбросить пароль</button>
+                <button class="btn-sm btn-delete" data-user="${esc(u.username)}">Удалить</button>
+            </td>`;
+        tb.appendChild(tr);
+    }
+    tb.querySelectorAll('.btn-reset-pass').forEach(b =>
+        b.onclick = () => resetUserPassword(b.dataset.user)
+    );
+    tb.querySelectorAll('.btn-delete').forEach(b =>
+        b.onclick = () => deleteUser(b.dataset.user)
+    );
+}
+
+async function resetUserPassword(username) {
+    const np = prompt(`Новый пароль для "${username}" (мин. 4):`);
+    if (!np) return;
+    const r = await fetch(`/api/users/${encodeURIComponent(username)}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_password: np }),
+    });
+    const data = await r.json();
+    if (data.ok) alert('✅ Пароль сброшен. Пользователь сменит при входе.');
+    else alert('❌ ' + (data.error || 'ошибка'));
+    loadUsers();
+}
+
+async function deleteUser(username) {
+    if (!confirm(`Удалить пользователя "${username}"?`)) return;
+    const r = await fetch(`/api/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+    const data = await r.json();
+    if (!data.ok) alert('❌ ' + (data.error || 'ошибка'));
+    loadUsers();
 }
 
 // ==================== Fallback ====================
 async function loadFallbackSources() {
+    if (!IS_ADMIN) return;
     try {
         const r = await fetch('/api/fallback/sources');
+        if (!r.ok) return;
         const data = await r.json();
         renderFallbackList(data.items || []);
         fallbackInitialized = true;
@@ -292,6 +447,7 @@ async function loadFallbackSources() {
 
 function renderFallbackList(items) {
     const box = $('fallback-list');
+    if (!box) return;
     if (!items.length) {
         box.innerHTML = '<div class="fallback-empty">Резервных каналов нет</div>';
         return;
@@ -301,7 +457,7 @@ function renderFallbackList(items) {
         const row = document.createElement('div');
         row.className = 'fallback-item';
         row.innerHTML = `
-            <div class="fb-name">${esc(it.name || `Резерв ${idx+1}`)}</div>
+            <div class="fb-name">${esc(it.name || `Резерв ${idx + 1}`)}</div>
             <div class="fb-url" title="${esc(it.url)}">${esc(it.url)}</div>
             <button data-idx="${idx}">Удалить</button>`;
         row.querySelector('button').onclick = async () => {
@@ -313,35 +469,22 @@ function renderFallbackList(items) {
 }
 
 async function saveFallbackSources(items) {
-    try {
-        const r = await fetch('/api/fallback/sources', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items }),
-        });
-        const data = await r.json();
-        if (data.ok) renderFallbackList(data.items || []);
-    } catch (e) { console.error(e); }
+    const r = await fetch('/api/fallback/sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+    });
+    const data = await r.json();
+    if (data.ok) renderFallbackList(data.items || []);
 }
 
-$('btn-add-fallback').onclick = async () => {
-    const name = $('new-fallback-name').value.trim();
-    const url = $('new-fallback-url').value.trim();
-    if (!url) { alert('Введите URL резервного потока'); return; }
-    const r = await fetch('/api/fallback/sources');
-    const data = await r.json();
-    const items = data.items || [];
-    items.push({ name: name || `Резерв ${items.length + 1}`, url });
-    await saveFallbackSources(items);
-    $('new-fallback-name').value = '';
-    $('new-fallback-url').value = '';
-};
-
-// ==================== Прочие загрузчики ====================
+// ==================== Загрузчики устройств ====================
 async function loadInputDevices() {
+    if (!IS_ADMIN) return;
     try {
         const { items } = await (await fetch('/api/devices')).json();
         const sel = $('source-device-select');
+        if (!sel) return;
         const cur = sel.value;
         sel.innerHTML = '<option value="">По умолчанию</option>';
         for (const d of items) {
@@ -355,9 +498,11 @@ async function loadInputDevices() {
 }
 
 async function loadHwOutputs() {
+    if (!IS_ADMIN) return;
     try {
         const { items } = await (await fetch('/api/outputs')).json();
         const sel = $('hw-output-select');
+        if (!sel) return;
         const cur = sel.value;
         sel.innerHTML = '<option value="">Отключён</option>';
         for (const d of items) {
@@ -375,6 +520,7 @@ async function loadSinkDevices() {
         if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
         const devices = await navigator.mediaDevices.enumerateDevices();
         const sel = $('sink-select');
+        if (!sel) return;
         const cur = sel.value;
         sel.innerHTML = '<option value="">По умолчанию</option>';
         for (const d of devices) {
@@ -389,11 +535,84 @@ async function loadSinkDevices() {
     } catch (e) { console.error(e); }
 }
 
+// ==================== SIP ====================
+async function refreshSipStatus() {
+    try {
+        const r = await fetch('/api/sip/status');
+        if (!r.ok) return;
+        const data = await r.json();
+
+        // Лампочка SIP — для всех ролей
+        const lamp = $('ind-sip');
+        if (lamp) {
+            lamp.classList.remove('active-idle', 'active-call');
+            if (data.engine_sip_active) lamp.classList.add('active-call');
+            else if (data.running) lamp.classList.add('active-idle');
+        }
+
+        if (!IS_ADMIN) return;
+        if ($('sip-status')) $('sip-status').textContent = data.running ? '✅ подключён' : '⏹ отключён';
+        if ($('sip-engine')) $('sip-engine').textContent = data.engine_sip_active ? '📞 активен' : '—';
+        if ($('btn-sip-start')) $('btn-sip-start').disabled = data.running;
+        if ($('btn-sip-stop')) $('btn-sip-stop').disabled = !data.running;
+
+        if (!sipInitialized && $('sip_domain')) {
+            $('sip_domain').value = data.sip_domain || '';
+            $('sip_username').value = data.sip_username || '';
+            $('sip_port').value = data.sip_port || 5060;
+            $('sip_transport').value = data.sip_transport || 'udp';
+            $('auto_start_sip').checked = !!data.auto_start_sip;
+            if ($('auto_start_engine')) $('auto_start_engine').checked = !!data.auto_start_engine;
+            $('sip_password').placeholder = data.sip_password_set
+                ? '•••••••• (сохранён)' : 'Введите пароль';
+            sipInitialized = true;
+        }
+    } catch (e) { console.error(e); }
+}
+
+function _sipPayload() {
+    return {
+        sip_domain: $('sip_domain').value.trim(),
+        sip_username: $('sip_username').value.trim(),
+        sip_password: $('sip_password').value,
+        sip_port: parseInt($('sip_port').value) || 5060,
+        sip_transport: $('sip_transport').value,
+    };
+}
+
+// ==================== О программе ====================
+async function loadAbout() {
+    try {
+        const r = await fetch('/api/about');
+        if (!r.ok) return;
+        const data = await r.json();
+        if ($('about-version')) $('about-version').textContent = `v${data.version}`;
+        if ($('about-author')) $('about-author').textContent = data.author;
+        if ($('about-license')) $('about-license').textContent = data.license;
+        if ($('about-github')) {
+            $('about-github').href = data.github;
+            $('about-github').textContent = data.github;
+        }
+        if ($('about-full-readme')) $('about-full-readme').href = data.github + '#readme';
+        if ($('about-readme-text')) {
+            const readme = (data.readme_md || '').trim();
+            if (!readme) {
+                $('about-readme-text').textContent = 'README.md не найден в папке приложения.';
+            } else {
+                $('about-readme-text').textContent =
+                    readme.length > 8000 ? readme.slice(0, 8000) + '\n\n… (продолжение на GitHub)' : readme;
+            }
+        }
+    } catch (e) { console.error('loadAbout', e); }
+}
+
 // ==================== Главный refresh ====================
 async function refreshAll() {
     try {
         const [sr, ar] = await Promise.all([fetch('/api/status'), fetch('/api/announcements')]);
         if (sr.status === 401) { location.href = '/login'; return; }
+        if (sr.status === 403) return;
+
         const { state, settings } = await sr.json();
         const { items } = await ar.json();
 
@@ -404,169 +623,287 @@ async function refreshAll() {
             updateSourceUI(settings);
             formInitialized = true;
         }
-        if (!fallbackInitialized) {
+        if (IS_ADMIN && !fallbackInitialized) {
             loadFallbackSources();
         }
         renderAnnouncements(items, settings.active_announcement_id);
+        renderQueue(items, state.playing_id);
 
-        if (settings.hw_output_device != null && $('hw-output-select').value === '') {
+        if (IS_ADMIN && $('hw-output-select') && settings.hw_output_device != null
+            && $('hw-output-select').value === '') {
             $('hw-output-select').value = String(settings.hw_output_device);
         }
         refreshSipStatus();
     } catch (e) { console.error('refreshAll', e); }
 }
 
-// ==================== Обработчики ====================
-document.querySelectorAll('input[name="source_type"]').forEach(r => {
-    r.addEventListener('change', () => {
-        const isDev = r.value === 'device' && r.checked;
-        $('source-stream').style.display = isDev ? 'none' : '';
-        $('source-device').style.display = isDev ? '' : 'none';
-    });
-});
-$('btn-refresh-devices').onclick = loadInputDevices;
+// ==================== Веб-плеер (для всех ролей) ====================
+if ($('btn-refresh-sinks')) {
+    $('btn-refresh-sinks').onclick = loadSinkDevices;
+}
+if ($('sink-select')) {
+    $('sink-select').onchange = async (e) => {
+        const id = e.target.value;
+        const player = $('player');
+        if (!player.setSinkId) {
+            $('output-status').textContent = '❌ браузер не поддерживает выбор устройства';
+            return;
+        }
+        try { await player.setSinkId(id || ''); }
+        catch (err) { $('output-status').textContent = '❌ ' + err.message + ' (нужен HTTPS)'; }
+    };
+}
+if ($('btn-stream-connect')) {
+    $('btn-stream-connect').onclick = async () => {
+        const player = $('player');
+        const btn = $('btn-stream-connect');
+        if (streamConnected) {
+            player.pause();
+            player.removeAttribute('src');
+            player.load();
+            streamConnected = false;
+            btn.textContent = '▶ Подключить';
+        } else {
+            player.src = '/stream';
+            try {
+                await player.play();
+                streamConnected = true;
+                btn.textContent = '⏸ Отключить';
+            } catch (e) {
+                $('output-status').textContent = '❌ ' + e.message;
+            }
+        }
+    };
+}
 
-$('btn-apply-source').onclick = async () => {
-    const st = $('source-status');
-    const type = document.querySelector('input[name="source_type"]:checked').value;
-    const url = $('source-url').value.trim();
-    const dv = $('source-device-select').value;
-    if (type === 'stream' && !url) { st.textContent = '❌ Укажите URL'; return; }
-    st.textContent = '⏳ Применение...';
-    try {
-        const r = await fetch('/api/settings', {
+// ==================== Обработчики (только admin) ====================
+if (IS_ADMIN) {
+    document.querySelectorAll('input[name="source_type"]').forEach(r => {
+        r.addEventListener('change', () => {
+            const isDev = r.value === 'device' && r.checked;
+            $('source-stream').style.display = isDev ? 'none' : '';
+            $('source-device').style.display = isDev ? '' : 'none';
+        });
+    });
+    $('btn-refresh-devices').onclick = loadInputDevices;
+
+    $('btn-apply-source').onclick = async () => {
+        const st = $('source-status');
+        const type = document.querySelector('input[name="source_type"]:checked').value;
+        const url = $('source-url').value.trim();
+        const dv = $('source-device-select').value;
+        if (type === 'stream' && !url) { st.textContent = '❌ Укажите URL'; return; }
+        st.textContent = '⏳ Применение...';
+        try {
+            const r = await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    source_type: type,
+                    radio_url: url,
+                    input_device: dv === '' ? null : parseInt(dv)
+                }),
+            });
+            const data = await r.json();
+            st.textContent = data.restarting ? '✅ Применено, перезапуск...' : '✅ Применено';
+            formInitialized = false;
+            refreshAll();
+        } catch (e) { st.textContent = '❌ ' + e.message; }
+        setTimeout(() => st.textContent = '', 4000);
+    };
+
+    // Аппаратный выход (только admin)
+    $('btn-refresh-hw-outputs').onclick = loadHwOutputs;
+    $('btn-apply-hw-output').onclick = async () => {
+        const status = $('output-status');
+        const val = $('hw-output-select').value;
+        status.textContent = '⏳ Применение...';
+        try {
+            const r = await fetch('/api/settings/output', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hw_output_device: val === '' ? null : parseInt(val) }),
+            });
+            const data = await r.json();
+            status.textContent = data.ok ? '✅ Применено' : '❌ ошибка';
+        } catch (e) { status.textContent = '❌ ' + e.message; }
+        setTimeout(() => status.textContent = '', 4000);
+    };
+
+    $('btn-start').onclick = async () => { await fetch('/api/start', { method: 'POST' }); refreshAll(); };
+    $('btn-stop').onclick = async () => { await fetch('/api/stop', { method: 'POST' }); refreshAll(); };
+
+    $('btn-scan-tone').onclick = async () => {
+        const status = $('scan-status');
+        const resultsBox = $('scan-results');
+        status.textContent = '⏳ Сканирование...';
+        resultsBox.innerHTML = '';
+        try {
+            const r = await fetch('/api/scan_tone', { method: 'POST' });
+            const data = await r.json();
+            if (!data.ok) { status.textContent = '❌ ' + (data.error || 'ошибка'); return; }
+            status.textContent = `✅ Проанализировано ${data.buffer_seconds} с`;
+            renderScanResults(data.candidates);
+        } catch (err) { status.textContent = '❌ ' + err.message; }
+    };
+
+    $('btn-add-fallback').onclick = async () => {
+        const name = $('new-fallback-name').value.trim();
+        const url = $('new-fallback-url').value.trim();
+        if (!url) { alert('Введите URL резервного потока'); return; }
+        const r = await fetch('/api/fallback/sources');
+        const data = await r.json();
+        const items = data.items || [];
+        items.push({ name: name || `Резерв ${items.length + 1}`, url });
+        await saveFallbackSources(items);
+        $('new-fallback-name').value = '';
+        $('new-fallback-url').value = '';
+    };
+
+    $('btn-sip-save').onclick = async () => {
+        const msg = $('sip-message');
+        msg.textContent = '⏳ Сохранение...';
+        try {
+            const r = await fetch('/api/sip/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(_sipPayload()),
+            });
+            const data = await r.json();
+            msg.textContent = data.ok ? '✅ Сохранено' : '❌ ' + (data.error || 'ошибка');
+            if (data.ok) {
+                $('sip_password').value = '';
+                sipInitialized = false;
+                refreshSipStatus();
+            }
+        } catch (e) { msg.textContent = '❌ ' + e.message; }
+        setTimeout(() => msg.textContent = '', 4000);
+    };
+
+    $('btn-sip-start').onclick = async () => {
+        const msg = $('sip-message');
+        msg.textContent = '⏳ Подключение...';
+        try {
+            const r = await fetch('/api/sip/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(_sipPayload()),
+            });
+            const data = await r.json();
+            msg.textContent = data.ok ? '✅ SIP подключён' : '❌ ' + (data.error || 'ошибка');
+            $('sip_password').value = '';
+            sipInitialized = false;
+            refreshSipStatus();
+        } catch (e) { msg.textContent = '❌ ' + e.message; }
+        setTimeout(() => msg.textContent = '', 5000);
+    };
+
+    $('btn-sip-stop').onclick = async () => {
+        await fetch('/api/sip/stop', { method: 'POST' });
+        refreshSipStatus();
+    };
+
+    $('auto_start_sip').onchange = async e => {
+        await fetch('/api/autostart', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                source_type: type,
-                radio_url: url,
-                input_device: dv === '' ? null : parseInt(dv)
+                auto_start_sip: e.target.checked,
+                auto_start_engine: $('auto_start_engine').checked,
             }),
         });
-        const data = await r.json();
-        st.textContent = data.restarting ? '✅ Применено, перезапуск...' : '✅ Применено';
-        formInitialized = false;
-        refreshAll();
-    } catch (e) { st.textContent = '❌ ' + e.message; }
-    setTimeout(() => st.textContent = '', 4000);
-};
-
-$('btn-refresh-hw-outputs').onclick = loadHwOutputs;
-$('btn-apply-hw-output').onclick = async () => {
-    const status = $('output-status');
-    const val = $('hw-output-select').value;
-    status.textContent = '⏳ Применение...';
-    try {
-        const r = await fetch('/api/settings/output', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ hw_output_device: val === '' ? null : parseInt(val) }),
-        });
-        const data = await r.json();
-        status.textContent = data.ok ? '✅ Применено' : '❌ ошибка';
-    } catch (e) { status.textContent = '❌ ' + e.message; }
-    setTimeout(() => status.textContent = '', 4000);
-};
-
-$('btn-refresh-sinks').onclick = loadSinkDevices;
-$('sink-select').onchange = async (e) => {
-    const id = e.target.value;
-    const player = $('player');
-    if (!player.setSinkId) {
-        $('output-status').textContent = '❌ браузер не поддерживает выбор';
-        return;
+    };
+    if ($('auto_start_engine')) {
+        $('auto_start_engine').onchange = async e => {
+            await fetch('/api/autostart', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    auto_start_engine: e.target.checked,
+                    auto_start_sip: $('auto_start_sip').checked,
+                }),
+            });
+        };
     }
-    try { await player.setSinkId(id || ''); }
-    catch (err) { $('output-status').textContent = '❌ ' + err.message; }
-};
 
-$('btn-stream-connect').onclick = async () => {
-    const player = $('player');
-    const btn = $('btn-stream-connect');
-    if (streamConnected) {
-        player.pause();
-        player.removeAttribute('src');
-        player.load();
-        streamConnected = false;
-        btn.textContent = '▶ Подключить';
-    } else {
-        player.src = '/stream';
-        try {
-            await player.play();
-            streamConnected = true;
-            btn.textContent = '⏸ Отключить';
-        } catch (e) {
-            $('output-status').textContent = '❌ ' + e.message;
-        }
+    if ($('fallback_enabled')) {
+        $('fallback_enabled').onchange = async e => {
+            await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fallback_enabled: e.target.checked }),
+            });
+            refreshAll();
+        };
     }
-};
 
-$('btn-start').onclick = async () => { await fetch('/api/start', { method: 'POST' }); refreshAll(); };
-$('btn-stop').onclick = async () => { await fetch('/api/stop', { method: 'POST' }); refreshAll(); };
+    if ($('settings-form')) {
+        $('settings-form').onsubmit = async e => {
+            e.preventDefault();
+            const data = {};
+            for (const el of e.target.elements) {
+                if (!el.name) continue;
+                if (el.type === 'checkbox') data[el.name] = el.checked;
+                else if (el.type === 'number') data[el.name] = parseFloat(el.value);
+                else data[el.name] = el.value;
+            }
+            if ($('fallback_enabled')) data.fallback_enabled = $('fallback_enabled').checked;
+            if ($('fallback_timeout_seconds')) data.fallback_timeout_seconds = parseFloat($('fallback_timeout_seconds').value) || 10;
+            if ($('fallback_retry_main_seconds')) data.fallback_retry_main_seconds = parseFloat($('fallback_retry_main_seconds').value) || 60;
 
-$('settings-form').onsubmit = async e => {
-    e.preventDefault();
-    const data = {};
-    for (const el of e.target.elements) {
-        if (!el.name) continue;
-        if (el.type === 'checkbox') data[el.name] = el.checked;
-        else if (el.type === 'number') data[el.name] = parseFloat(el.value);
-        else data[el.name] = el.value;
+            await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+            formInitialized = false;
+            refreshAll();
+        };
     }
-    // fallback_enabled и его параметры не входят в settings-form — добавим вручную
-    data.fallback_enabled = $('fallback_enabled').checked;
-    data.fallback_timeout_seconds = parseFloat($('fallback_timeout_seconds').value) || 10;
-    data.fallback_retry_main_seconds = parseFloat($('fallback_retry_main_seconds').value) || 60;
 
-    await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-    });
-    formInitialized = false;
-    refreshAll();
-};
+    if ($('simulate')) {
+        $('simulate').onchange = async e => {
+            await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ simulate_tone: e.target.checked }),
+            });
+            refreshAll();
+        };
+    }
 
-$('simulate').onchange = async e => {
-    await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ simulate_tone: e.target.checked }),
-    });
-    refreshAll();
-};
+    if ($('btn-create-user')) {
+        $('btn-create-user').onclick = async () => {
+            const status = $('user-status');
+            const username = $('new_user_name').value.trim();
+            const password = $('new_user_pass').value;
+            const role = $('new_user_role').value;
+            const mustChange = $('new_user_must_change').checked;
+            if (!username || !password) { status.textContent = '❌ Заполните логин и пароль'; return; }
+            status.textContent = '⏳ Создание...';
+            try {
+                const r = await fetch('/api/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password, role, must_change_password: mustChange }),
+                });
+                const data = await r.json();
+                status.textContent = data.ok ? '✅ Создан' : '❌ ' + (data.error || 'ошибка');
+                if (data.ok) {
+                    $('new_user_name').value = '';
+                    $('new_user_pass').value = '';
+                    loadUsers();
+                }
+            } catch (e) { status.textContent = '❌ ' + e.message; }
+            setTimeout(() => status.textContent = '', 4000);
+        };
+    }
+}
 
-$('upload-form').onsubmit = async e => {
-    e.preventDefault();
-    const status = $('upload-status');
-    const fd = new FormData(e.target);
-    status.textContent = '⏳ Загрузка...';
-    try {
-        const r = await fetch('/api/announcements', { method: 'POST', body: fd });
-        const data = await r.json();
-        status.textContent = data.ok ? '✅ Загружено' : '❌ ' + (data.error || 'ошибка');
-        if (data.ok) { e.target.reset(); refreshAll(); }
-    } catch (err) { status.textContent = '❌ ' + err.message; }
-    setTimeout(() => status.textContent = '', 4000);
-};
-
-// ==================== Скан субтонов ====================
-$('btn-scan-tone').onclick = async () => {
-    const status = $('scan-status');
-    const resultsBox = $('scan-results');
-    status.textContent = '⏳ Сканирование...';
-    resultsBox.innerHTML = '';
-    try {
-        const r = await fetch('/api/scan_tone', { method: 'POST' });
-        const data = await r.json();
-        if (!data.ok) { status.textContent = '❌ ' + (data.error || 'ошибка'); return; }
-        status.textContent = `✅ Проанализировано ${data.buffer_seconds} с`;
-        renderScanResults(data.candidates);
-    } catch (err) { status.textContent = '❌ ' + err.message; }
-};
-
+// ==================== Сканер (общий для admin) ====================
 function renderScanResults(candidates) {
     const box = $('scan-results');
+    if (!box) return;
     if (!candidates || !candidates.length) {
         box.innerHTML = '<div class="empty">Нет кандидатов</div>';
         return;
@@ -606,120 +943,35 @@ function renderScanResults(candidates) {
     });
 }
 
-// ==================== SIP ====================
-async function refreshSipStatus() {
-    try {
-        const r = await fetch('/api/sip/status');
-        if (r.status === 401) return;
-        const data = await r.json();
-        $('sip-status').textContent = data.running ? '✅ подключён' : '⏹ отключён';
-        $('sip-engine').textContent = data.engine_sip_active ? '📞 активен' : '—';
-        $('btn-sip-start').disabled = data.running;
-        $('btn-sip-stop').disabled = !data.running;
-
-        if (!sipInitialized) {
-            $('sip_domain').value = data.sip_domain || '';
-            $('sip_username').value = data.sip_username || '';
-            $('sip_port').value = data.sip_port || 5060;
-            $('sip_transport').value = data.sip_transport || 'udp';
-            $('auto_start_sip').checked = !!data.auto_start_sip;
-            $('auto_start_engine').checked = !!data.auto_start_engine;
-            $('sip_password').placeholder = data.sip_password_set
-                ? '•••••••• (сохранён)' : 'Введите пароль';
-            sipInitialized = true;
-        }
-    } catch (e) { console.error(e); }
-}
-
-function _sipPayload() {
-    return {
-        sip_domain: $('sip_domain').value.trim(),
-        sip_username: $('sip_username').value.trim(),
-        sip_password: $('sip_password').value,
-        sip_port: parseInt($('sip_port').value) || 5060,
-        sip_transport: $('sip_transport').value,
+// ==================== Загрузка объявления (для всех ролей) ====================
+if ($('upload-form')) {
+    $('upload-form').onsubmit = async e => {
+        e.preventDefault();
+        const status = $('upload-status');
+        const fd = new FormData(e.target);
+        status.textContent = '⏳ Загрузка...';
+        try {
+            const r = await fetch('/api/announcements', { method: 'POST', body: fd });
+            const data = await r.json();
+            status.textContent = data.ok ? '✅ Загружено' : '❌ ' + (data.error || 'ошибка');
+            if (data.ok) {
+                e.target.reset();
+                refreshAll();
+            }
+        } catch (err) { status.textContent = '❌ ' + err.message; }
+        setTimeout(() => status.textContent = '', 5000);
     };
 }
 
-$('btn-sip-save').onclick = async () => {
-    const msg = $('sip-message');
-    msg.textContent = '⏳ Сохранение...';
-    try {
-        const r = await fetch('/api/sip/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(_sipPayload()),
-        });
-        const data = await r.json();
-        msg.textContent = data.ok ? '✅ Сохранено' : '❌ ' + (data.error || 'ошибка');
-        if (data.ok) {
-            $('sip_password').value = '';
-            sipInitialized = false;
-            refreshSipStatus();
-        }
-    } catch (e) { msg.textContent = '❌ ' + e.message; }
-    setTimeout(() => msg.textContent = '', 4000);
-};
-
-$('btn-sip-start').onclick = async () => {
-    const msg = $('sip-message');
-    msg.textContent = '⏳ Подключение...';
-    try {
-        const r = await fetch('/api/sip/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(_sipPayload()),
-        });
-        const data = await r.json();
-        msg.textContent = data.ok ? '✅ SIP подключён' : '❌ ' + (data.error || 'ошибка');
-        $('sip_password').value = '';
-        sipInitialized = false;
-        refreshSipStatus();
-    } catch (e) { msg.textContent = '❌ ' + e.message; }
-    setTimeout(() => msg.textContent = '', 5000);
-};
-
-$('btn-sip-stop').onclick = async () => {
-    await fetch('/api/sip/stop', { method: 'POST' });
-    refreshSipStatus();
-};
-
-$('auto_start_sip').onchange = async e => {
-    await fetch('/api/autostart', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            auto_start_sip: e.target.checked,
-            auto_start_engine: $('auto_start_engine').checked,
-        }),
-    });
-};
-
-$('auto_start_engine').onchange = async e => {
-    await fetch('/api/autostart', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            auto_start_engine: e.target.checked,
-            auto_start_sip: $('auto_start_sip').checked,
-        }),
-    });
-};
-
-$('fallback_enabled').onchange = async e => {
-    await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fallback_enabled: e.target.checked }),
-    });
-    refreshAll();
-};
-
 // ==================== Старт ====================
-loadInputDevices();
-loadHwOutputs();
 loadSinkDevices();
-loadFallbackSources();
-refreshSipStatus();
+if (IS_ADMIN) {
+    loadInputDevices();
+    loadHwOutputs();
+    loadFallbackSources();
+    loadUsers();
+    refreshSipStatus();
+}
+loadAbout();
 setInterval(refreshAll, 1000);
 refreshAll();

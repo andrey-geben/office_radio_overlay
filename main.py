@@ -1,4 +1,6 @@
 # main.py
+import os
+import sys
 import threading
 import struct
 from flask import (Flask, jsonify, request, render_template, redirect,
@@ -7,32 +9,53 @@ from datetime import timedelta
 from engine import RadioOverlayEngine
 from audio_capture import list_input_devices
 from audio_output import HardwareOutput
-from auth import login_required
+from auth import login_required, admin_required
 import announcement_store
 import settings_store
+import users_store
 import config
 
-app = Flask(__name__)
+def _resource_path(relative):
+    """Работает и при запуске из исходников, и из .exe PyInstaller."""
+    try:
+        base = sys._MEIPASS
+    except Exception:
+        base = os.path.abspath(".")
+    return os.path.join(base, relative)
+
+
+app = Flask(
+    __name__,
+    template_folder=_resource_path("templates"),
+    static_folder=_resource_path("static"),
+)
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
 app.secret_key = config.SECRET_KEY
 app.permanent_session_lifetime = timedelta(hours=config.SESSION_LIFETIME_HOURS)
 engine = RadioOverlayEngine()
 
-# SIP-клиент — глобальный, создаётся/останавливается через API
 sip_client = None
 
+# Первый запуск: создаём admin/admin
+users_store.ensure_default_admin()
 
-# --- Авторизация ---
+
+# ==================== Авторизация ====================
 @app.route("/login", methods=["GET", "POST"])
 def login():
     error = None
     if request.method == "POST":
-        u = request.form.get("username", "")
+        u = request.form.get("username", "").strip()
         p = request.form.get("password", "")
-        if u == config.AUTH_USERNAME and p == config.AUTH_PASSWORD:
+        user = users_store.verify(u, p)
+        if user:
             session.permanent = True
             session["logged_in"] = True
-            session["username"] = u
+            session["username"] = user["username"]
+            session["role"] = user["role"]
+            session["must_change_password"] = bool(user.get("must_change_password", False))
+            if user.get("must_change_password"):
+                return redirect(url_for("change_password"))
             nxt = request.args.get("next") or "/"
             return redirect(nxt)
         error = "Неверный логин или пароль"
@@ -45,13 +68,56 @@ def logout():
     return redirect(url_for("login"))
 
 
+@app.route("/change-password", methods=["GET", "POST"])
+@login_required
+def change_password():
+    error = None
+    must_change = session.get("must_change_password", False)
+
+    if request.method == "POST":
+        new_p = request.form.get("new_password", "")
+        confirm = request.form.get("confirm_password", "")
+        current = request.form.get("current_password", "")
+
+        if not must_change:
+            if not users_store.verify(session.get("username"), current):
+                error = "Неверный текущий пароль"
+
+        if not error:
+            if len(new_p) < 4:
+                error = "Пароль должен быть минимум 4 символа"
+            elif new_p != confirm:
+                error = "Пароли не совпадают"
+            elif must_change and new_p.lower() == "admin":
+                error = "Нельзя использовать пароль по умолчанию"
+
+        if not error:
+            try:
+                users_store.update_password(session["username"], new_p, must_change=False)
+                session["must_change_password"] = False
+                return redirect(url_for("index"))
+            except Exception as e:
+                error = str(e)
+
+    return render_template(
+        "change_password.html",
+        username=session.get("username"),
+        must_change=must_change,
+        error=error,
+    )
+
+
 @app.route("/")
 @login_required
 def index():
-    return render_template("index.html", username=session.get("username", "?"))
+    return render_template(
+        "index.html",
+        username=session.get("username", "?"),
+        role=session.get("role", "operator"),
+    )
 
 
-# --- HTTP-стрим для браузера ---
+# ==================== HTTP-стрим ====================
 def _wav_header(sample_rate, channels, bits):
     byte_rate = sample_rate * channels * bits // 8
     block_align = channels * bits // 8
@@ -83,27 +149,40 @@ def audio_stream():
     )
 
 
-# --- Статус / управление ---
+# ==================== Статус / управление ====================
 @app.route("/api/status")
 @login_required
 def api_status():
     return jsonify({"state": engine.get_state(), "settings": engine.get_settings()})
 
 
+@app.route("/api/start", methods=["POST"])
+@admin_required
+def api_start():
+    return jsonify({"ok": engine.start()})
+
+
+@app.route("/api/stop", methods=["POST"])
+@admin_required
+def api_stop():
+    engine.stop()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/devices")
-@login_required
+@admin_required
 def api_devices():
     return jsonify({"items": list_input_devices()})
 
 
 @app.route("/api/outputs")
-@login_required
+@admin_required
 def api_outputs():
     return jsonify({"items": HardwareOutput.list_output_devices()})
 
 
 @app.route("/api/settings/output", methods=["POST"])
-@login_required
+@admin_required
 def api_set_output():
     data = request.get_json(silent=True) or {}
     if "hw_output_device" not in data:
@@ -112,27 +191,14 @@ def api_set_output():
     return jsonify({"ok": ok, "hw_output": engine.get_state().get("hw_output")})
 
 
-@app.route("/api/start", methods=["POST"])
-@login_required
-def api_start():
-    return jsonify({"ok": engine.start()})
-
-
-@app.route("/api/stop", methods=["POST"])
-@login_required
-def api_stop():
-    engine.stop()
-    return jsonify({"ok": True})
-
-
 @app.route("/api/settings", methods=["POST"])
-@login_required
+@admin_required
 def api_settings():
     data = request.get_json(silent=True) or {}
     numeric = {"tone_freq", "detection_threshold", "dcs_freq", "dcs_threshold",
                "ducking_level", "announcement_level", "fade_out_ms", "fade_in_ms",
-               "tone_timeout_seconds"}
-    boolean = {"simulate_tone", "tone_timeout_enabled"}
+               "tone_timeout_seconds", "fallback_timeout_seconds", "fallback_retry_main_seconds"}
+    boolean = {"simulate_tone", "tone_timeout_enabled", "fallback_enabled"}
     source_keys = {"radio_url", "source_type", "input_device"}
 
     filtered = {}
@@ -173,7 +239,7 @@ def api_settings():
     return jsonify({"ok": True, "settings": engine.get_settings()})
 
 
-# --- Объявления ---
+# ==================== Объявления ====================
 @app.route("/api/announcements", methods=["GET"])
 @login_required
 def api_list_announcements():
@@ -195,6 +261,7 @@ def api_upload_announcement():
             start_time=request.form.get("start_time") or None,
             end_time=request.form.get("end_time") or None,
             repeat_limit=request.form.get("repeat_limit") or 0,
+            min_interval_minutes=request.form.get("min_interval_minutes") or 0,
         )
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
@@ -225,12 +292,16 @@ def api_activate_announcement(ann_id):
 @login_required
 def api_update_schedule(ann_id):
     data = request.get_json(silent=True) or {}
-    item = announcement_store.update_schedule(
-        ann_id,
-        data.get("start_time") or None,
-        data.get("end_time") or None,
-        data.get("repeat_limit") or 0,
-    )
+    try:
+        item = announcement_store.update_schedule(
+            ann_id,
+            data.get("start_time") or None,
+            data.get("end_time") or None,
+            data.get("repeat_limit") or 0,
+            data.get("min_interval_minutes") or 0,
+        )
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
     if not item:
         return jsonify({"ok": False, "error": "not found"}), 404
     if engine.get_settings().get("active_announcement_id") == ann_id:
@@ -238,15 +309,15 @@ def api_update_schedule(ann_id):
     return jsonify({"ok": True, "item": item})
 
 
-# --- Сканирование субтонов ---
+# ==================== Субтоны ====================
 @app.route("/api/scan_tone", methods=["POST"])
-@login_required
+@admin_required
 def api_scan_tone():
     return jsonify(engine.scan_tone())
 
 
 @app.route("/api/apply_tone", methods=["POST"])
-@login_required
+@admin_required
 def api_apply_tone():
     data = request.get_json(silent=True) or {}
     if "freq" not in data:
@@ -259,20 +330,25 @@ def api_apply_tone():
     return jsonify({"ok": True, "settings": engine.get_settings()})
 
 
-# --- SIP / ЛСО ---
-def _get_sip_settings():
-    saved = settings_store.load()
-    return {
-        "sip_domain": saved.get("sip_domain", ""),
-        "sip_username": saved.get("sip_username", ""),
-        "sip_password": saved.get("sip_password", ""),
-        "sip_port": saved.get("sip_port", 5060),
-        "sip_transport": saved.get("sip_transport", "udp"),
-    }
+# ==================== Fallback ====================
+@app.route("/api/fallback/sources", methods=["GET"])
+@admin_required
+def api_get_fallback_sources():
+    return jsonify({"items": engine.get_settings().get("fallback_sources", [])})
 
 
+@app.route("/api/fallback/sources", methods=["POST"])
+@admin_required
+def api_set_fallback_sources():
+    data = request.get_json(silent=True) or {}
+    items = data.get("items", [])
+    ok = engine.set_fallback_sources(items)
+    return jsonify({"ok": ok, "items": engine.get_settings().get("fallback_sources", [])})
+
+
+# ==================== SIP ====================
 @app.route("/api/sip/save", methods=["POST"])
-@login_required
+@admin_required
 def api_sip_save():
     data = request.get_json(silent=True) or {}
     domain = (data.get("sip_domain") or "").strip()
@@ -287,22 +363,18 @@ def api_sip_save():
         transport = "udp"
 
     saved = settings_store.load()
-    # если пароль не введён — сохраняем ранее сохранённый
     if not password:
         password = saved.get("sip_password", "")
 
     settings_store.update(
-        sip_domain=domain,
-        sip_username=username,
-        sip_password=password,
-        sip_port=port,
-        sip_transport=transport,
+        sip_domain=domain, sip_username=username, sip_password=password,
+        sip_port=port, sip_transport=transport,
     )
     return jsonify({"ok": True})
 
 
 @app.route("/api/sip/start", methods=["POST"])
-@login_required
+@admin_required
 def api_sip_start():
     global sip_client
     data = request.get_json(silent=True) or {}
@@ -327,11 +399,8 @@ def api_sip_start():
         return jsonify({"ok": False, "error": "Введите пароль"}), 400
 
     settings_store.update(
-        sip_domain=domain,
-        sip_username=username,
-        sip_password=password,
-        sip_port=port,
-        sip_transport=transport,
+        sip_domain=domain, sip_username=username, sip_password=password,
+        sip_port=port, sip_transport=transport,
     )
 
     if sip_client is not None and sip_client.is_running():
@@ -350,7 +419,7 @@ def api_sip_start():
 
 
 @app.route("/api/sip/stop", methods=["POST"])
-@login_required
+@admin_required
 def api_sip_stop():
     global sip_client
     if sip_client is not None:
@@ -378,7 +447,7 @@ def api_sip_status():
 
 
 @app.route("/api/autostart", methods=["POST"])
-@login_required
+@admin_required
 def api_autostart():
     data = request.get_json(silent=True) or {}
     settings_store.update(
@@ -388,7 +457,59 @@ def api_autostart():
     return jsonify({"ok": True})
 
 
-# --- Автозапуск при старте сервера ---
+# ==================== Пользователи (только admin) ====================
+@app.route("/api/users", methods=["GET"])
+@admin_required
+def api_list_users():
+    return jsonify({"items": users_store.list_users()})
+
+
+@app.route("/api/users", methods=["POST"])
+@admin_required
+def api_create_user():
+    data = request.get_json(silent=True) or {}
+    try:
+        user = users_store.create_user(
+            (data.get("username") or "").strip(),
+            data.get("password") or "",
+            role=data.get("role", "operator"),
+            must_change=bool(data.get("must_change_password", True)),
+        )
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({
+        "ok": True,
+        "user": {k: v for k, v in user.items() if k != "password_hash"},
+    })
+
+
+@app.route("/api/users/<username>", methods=["DELETE"])
+@admin_required
+def api_delete_user(username):
+    if username == session.get("username"):
+        return jsonify({"ok": False, "error": "Нельзя удалить самого себя"}), 400
+    try:
+        users_store.delete_user(username)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True})
+
+
+@app.route("/api/users/<username>/reset-password", methods=["POST"])
+@admin_required
+def api_reset_user_password(username):
+    if username == session.get("username"):
+        return jsonify({"ok": False, "error": "Свой пароль меняйте через «🔑 Пароль»"}), 400
+    data = request.get_json(silent=True) or {}
+    new_password = data.get("new_password") or ""
+    try:
+        users_store.update_password(username, new_password, must_change=True)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True})
+
+
+# ==================== Автозапуск ====================
 def _boot_autostart():
     saved = settings_store.load()
     if saved.get("auto_start_engine"):
@@ -415,20 +536,26 @@ def _boot_autostart():
         except Exception as e:
             print(f"[boot] Ошибка автозапуска SIP: {e}")
 
-# --- Fallback-источники ---
-@app.route("/api/fallback/sources", methods=["GET"])
+@app.route("/api/about")
 @login_required
-def api_get_fallback_sources():
-    return jsonify({"items": engine.get_settings().get("fallback_sources", [])})
-
-
-@app.route("/api/fallback/sources", methods=["POST"])
-@login_required
-def api_set_fallback_sources():
-    data = request.get_json(silent=True) or {}
-    items = data.get("items", [])
-    ok = engine.set_fallback_sources(items)
-    return jsonify({"ok": ok, "items": engine.get_settings().get("fallback_sources", [])})
+def api_about():
+    import os as _os
+    readme_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "README.md")
+    readme_md = ""
+    if _os.path.exists(readme_path):
+        try:
+            with open(readme_path, "r", encoding="utf-8") as f:
+                readme_md = f.read()
+        except Exception:
+            pass
+    return jsonify({
+        "version": "1.0.0",
+        "author": "Andrey Geben",
+        "github": "https://github.com/andrey-geben/office_radio_overlay",
+        "license": "MIT",
+        "year": 2026,
+        "readme_md": readme_md,
+    })
 
 if __name__ == "__main__":
     _boot_autostart()

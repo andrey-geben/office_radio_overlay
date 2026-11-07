@@ -71,6 +71,11 @@ class RadioOverlayEngine:
         self._ann_active = False
         self._ann_pos = 0
 
+        # Сейчас играющее объявление (может быть любым по расписанию)
+        self._playing_data = None
+        self._playing_id = None
+        self._playing_name = None
+
         self._sip_active = False
         self._sip_call = None
 
@@ -118,6 +123,8 @@ class RadioOverlayEngine:
             "spectrum": [0.0] * SPECTRUM_BANDS,
             "current_source": "—",
             "using_reserve": False,
+            "playing_name": None,
+            "playing_id": None,
         }
 
         self._settings = {
@@ -142,12 +149,6 @@ class RadioOverlayEngine:
             "fallback_retry_main_seconds": saved.get("fallback_retry_main_seconds", config.FALLBACK_RETRY_MAIN_SECONDS),
             "fallback_sources": saved.get("fallback_sources", []),
         }
-
-        try:
-            if self._settings.get("active_announcement_id"):
-                self.reload_announcement()
-        except Exception:
-            logger.warning("Не удалось восстановить активное объявление")
 
     # --- SIP ---
     def enter_sip_mode(self, sip_call=None):
@@ -195,7 +196,6 @@ class RadioOverlayEngine:
         with self._lock:
             was_timeout_enabled = self._settings.get("tone_timeout_enabled", False)
             self._settings.update(kwargs)
-            changed_active = "active_announcement_id" in kwargs
             now_timeout_enabled = self._settings.get("tone_timeout_enabled", False)
 
         if now_timeout_enabled and not was_timeout_enabled:
@@ -209,12 +209,9 @@ class RadioOverlayEngine:
             except Exception as e:
                 logger.warning(f"Не удалось сохранить настройки: {e}")
 
-        if changed_active:
-            self.reload_announcement()
         return self.get_settings()
 
     def set_fallback_sources(self, sources):
-        """sources — список [{"name": str, "url": str}]"""
         if not isinstance(sources, list):
             return False
         cleaned = []
@@ -283,36 +280,31 @@ class RadioOverlayEngine:
             "candidates": candidates,
         }
 
+    # --- Загрузка PCM «приоритетного» объявления (для превью / совместимости) ---
     def reload_announcement(self):
         with self._lock:
             ann_id = self._settings.get("active_announcement_id")
         if not ann_id:
-            with self._lock:
-                self._announcement_data = None
             return False
         path = announcement_store.get_path(ann_id)
         if not path:
-            with self._lock:
-                self._announcement_data = None
             return False
         try:
-            data = load_announcement(path=path)
+            load_announcement(path=path)
         except Exception:
             logger.exception("Не удалось загрузить %s", path)
-            with self._lock:
-                self._announcement_data = None
             return False
-        with self._lock:
-            self._announcement_data = data
         return True
 
     def start(self):
         if self._thread and self._thread.is_alive():
             return False
-        self.reload_announcement()
         with self._lock:
             self._ann_active = False
             self._ann_pos = 0
+            self._playing_data = None
+            self._playing_id = None
+            self._playing_name = None
             self._tone_events.clear()
             self._total_ctcss = 0
             self._total_dcs = 0
@@ -344,7 +336,8 @@ class RadioOverlayEngine:
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=5)
-        self._update_state(running=False, last_event="stopped", announcement_active=False)
+        self._update_state(running=False, last_event="stopped", announcement_active=False,
+                           playing_name=None, playing_id=None)
 
     # --- Внутреннее ---
     def _update_state(self, **kwargs):
@@ -445,43 +438,84 @@ class RadioOverlayEngine:
         if self._hw_output.is_running():
             self._hw_output.push(chunk)
 
-    def _handle_trigger(self, from_timeout=False):
+    # --- Ключевой метод: выбор объявления по расписанию ---
+    def _pick_announcement_for_trigger(self):
+        """
+        Возвращает id объявления, которое нужно проиграть сейчас, или None.
+        Логика:
+          1. Все объявления с корректным расписанием и неисчерпанным лимитом.
+          2. Если задан active_announcement_id и он в этом списке — берём его (приоритет).
+          3. Иначе — ротация: тот, кто дольше всех не играл (или ещё ни разу).
+        """
+        items = announcement_store.list_announcements()
+        playable = []
+        for it in items:
+            ok, _reason = announcement_store.check_playable(it)
+            if ok:
+                playable.append(it)
+
+        if not playable:
+            return None
+
         with self._lock:
             active_id = self._settings.get("active_announcement_id")
-            ann_data = self._announcement_data
-            last_play = self._last_play_time
 
-        if not active_id or ann_data is None:
+        if active_id:
+            for it in playable:
+                if it["id"] == active_id:
+                    return active_id
+
+        # Ротация: самый старый last_played — первым (пустой = никогда не играл)
+        playable.sort(key=lambda it: it.get("last_played") or "")
+        return playable[0]["id"]
+
+    def _handle_trigger(self, from_timeout=False):
+        now = time.time()
+        with self._lock:
+            if now - self._last_play_time < config.MIN_ANNOUNCE_INTERVAL:
+                return False
+
+        ann_id = self._pick_announcement_for_trigger()
+        if not ann_id:
             if not from_timeout:
-                self._update_state(last_event="🔊 трансляция (нет активного объявления)")
-            return False
-        if time.time() - last_play < config.MIN_ANNOUNCE_INTERVAL:
+                self._update_state(last_event="⏸ все объявления на паузе (расписание / лимит / интервал)")
             return False
 
-        meta = announcement_store.get_announcement(active_id)
-        if not meta:
-            self._update_state(last_event="тон (объявление удалено)",
-                               error="Активное объявление не найдено")
+        path = announcement_store.get_path(ann_id)
+        if not path:
+            self._update_state(last_event="объявление удалено",
+                               error=f"Файл объявления {ann_id} не найден")
             return False
-        ok, reason = announcement_store.check_playable(meta)
-        if not ok:
-            if not from_timeout:
-                self._update_state(last_event=f"тон (вне расписания: {reason})")
+
+        try:
+            data = load_announcement(path=path)
+        except Exception:
+            logger.exception("Не удалось загрузить %s", path)
+            self._update_state(last_event="ошибка загрузки объявления")
             return False
+
+        meta = announcement_store.get_announcement(ann_id)
+        name = (meta.get("original_name") if meta else None) or ann_id
 
         with self._lock:
-            self._last_play_time = time.time()
-            self._last_activity_time = time.time()
-            self._ann_active = True
+            self._last_play_time = now
+            self._last_activity_time = now
+            self._playing_data = data
+            self._playing_id = ann_id
+            self._playing_name = name
             self._ann_pos = 0
+            self._ann_active = True
             self._state["announcements_played"] += 1
             self._state["announcement_active"] = True
-        announcement_store.increment_play(active_id)
+            self._state["playing_name"] = name
+            self._state["playing_id"] = ann_id
+
+        announcement_store.increment_play(ann_id)
 
         if from_timeout:
-            self._update_state(last_event="⏰ таймаут без тона — объявление в эфире")
+            self._update_state(last_event=f"⏰ {name} (по таймауту)")
         else:
-            self._update_state(last_event="🔔 объявление в эфире")
+            self._update_state(last_event=f"🔔 {name} в эфире")
         return True
 
     def _check_timeout_trigger(self, settings):
@@ -499,16 +533,11 @@ class RadioOverlayEngine:
             elapsed = time.time() - self._last_activity_time
         if elapsed < timeout:
             return
-        with self._lock:
-            active_id = self._settings.get("active_announcement_id")
-            ann_data = self._announcement_data
-        if not active_id or ann_data is None:
-            return
         self._handle_trigger(from_timeout=True)
 
     def _play_chunk(self, chunk):
         with self._lock:
-            ann_data = self._announcement_data
+            ann_data = self._playing_data
             pos = self._ann_pos
         if ann_data is None:
             self._finish_announcement()
@@ -517,6 +546,7 @@ class RadioOverlayEngine:
         if remaining <= 0:
             self._finish_announcement()
             return None
+
         take = min(remaining, len(chunk))
         ann_chunk = ann_data[pos:pos + take]
         if take < len(chunk):
@@ -525,6 +555,7 @@ class RadioOverlayEngine:
         s = self.get_settings()
         fade_out_s = int(s["fade_out_ms"] * config.SAMPLE_RATE / 1000)
         fade_in_s = int(s["fade_in_ms"] * config.SAMPLE_RATE / 1000)
+
         pos_samples = pos // 2
         total_samples = len(ann_data) // 2
 
@@ -537,14 +568,18 @@ class RadioOverlayEngine:
         if self._ann_pos >= len(ann_data):
             self._finish_announcement()
         else:
-            self._update_state(last_event="🔔 объявление в эфире")
+            self._update_state(last_event=f"🔔 {self._playing_name or 'объявление'} в эфире")
         return mixed
 
     def _finish_announcement(self):
         with self._lock:
             self._ann_active = False
             self._ann_pos = 0
-        self._update_state(announcement_active=False, last_event="streaming")
+            self._playing_data = None
+            self._playing_id = None
+            self._playing_name = None
+        self._update_state(announcement_active=False, last_event="streaming",
+                           playing_name=None, playing_id=None)
 
     def _update_perf(self, source_type):
         now = time.time()
@@ -563,13 +598,13 @@ class RadioOverlayEngine:
         self._update_state(cpu_percent=round(cpu, 1), network_bps=net_bps)
 
     def _stream_manager(self):
-        """Генератор чанков с логикой fallback-источников."""
         s = self.get_settings()
 
         if s["source_type"] == "device":
             self._update_state(current_source="Устройство", using_reserve=False)
             try:
-                yield from stream_from_device_safe(s["input_device"])
+                from audio_capture import stream_from_device
+                yield from stream_from_device(device=s["input_device"])
             except Exception as e:
                 logger.warning(f"Ошибка устройства: {e}")
             return
@@ -619,7 +654,7 @@ class RadioOverlayEngine:
                         break
                     yield chunk
                     if not src["is_main"] and time.time() - last_try_main > retry_main:
-                        break  # пора проверить основной
+                        break
             except Exception as e:
                 logger.warning(f"Источник '{src['name']}' недоступен: {e}")
                 if idx < len(sources) - 1:
@@ -699,7 +734,8 @@ class RadioOverlayEngine:
                         self._update_state(last_event="streaming")
 
                 self._push_output(chunk)
-                # Без sleep: ffmpeg отдаёт ровно по block_size, нет накопления задержки
+                time.sleep(0.005)
+
         except Exception as e:
             logger.exception("Ошибка движка")
             self._update_state(error=str(e))
@@ -709,9 +745,6 @@ class RadioOverlayEngine:
                 ctcss_detected=False,
                 dcs_detected=False,
                 announcement_active=False,
+                playing_name=None,
+                playing_id=None,
             )
-
-
-def stream_from_device_safe(device):
-    from audio_capture import stream_from_device
-    yield from stream_from_device(device=device)

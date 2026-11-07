@@ -1,9 +1,10 @@
 # audio_capture.py
+import io
 import os
+import sys
 import shutil
-import subprocess
 import threading
-import time
+import subprocess
 import requests
 import config
 
@@ -23,13 +24,37 @@ def get_bytes_received():
 
 
 def _find_ffmpeg():
-    """Ищет ffmpeg в PATH. Если нет — вернёт None."""
+    """
+    Ищет ffmpeg:
+      1. Рядом с exe (для сборки PyInstaller).
+      2. Рядом с текущим файлом.
+      3. В PATH.
+    Возвращает путь или None.
+    """
+    candidates = []
+
+    # 1) рядом с exe (PyInstaller)
+    if getattr(sys, "frozen", False):
+        exe_dir = os.path.dirname(sys.executable)
+        candidates.append(os.path.join(exe_dir, "ffmpeg.exe"))
+        candidates.append(os.path.join(exe_dir, "ffmpeg"))
+
+    # 2) рядом с этим файлом
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates.append(os.path.join(here, "ffmpeg.exe"))
+    candidates.append(os.path.join(here, "ffmpeg"))
+
+    for p in candidates:
+        if os.path.isfile(p) and os.access(p, os.X_OK):
+            return p
+
+    # 3) в PATH
     return shutil.which("ffmpeg")
 
 
-def _ffmpeg_cmd(url, extra_args=None):
+def _ffmpeg_cmd(ffmpeg_path, url, extra_args=None):
     cmd = [
-        "ffmpeg",
+        ffmpeg_path,
         "-hide_banner",
         "-loglevel", "error",
         "-nostdin",
@@ -42,7 +67,6 @@ def _ffmpeg_cmd(url, extra_args=None):
         "pipe:1",
     ]
     if extra_args:
-        # вставляем перед -i
         idx = cmd.index("-i")
         cmd = cmd[:idx] + extra_args + cmd[idx:]
     return cmd
@@ -50,8 +74,8 @@ def _ffmpeg_cmd(url, extra_args=None):
 
 def stream_audio_chunks(url=None, block_size=None, read_timeout=None):
     """
-    Генератор PCM-чанков из интернет-потока через долгоживущий процесс FFmpeg.
-    Отдаёт чанки ровно по block_size сэмплов, без рывков.
+    Генератор PCM-чанков из интернет-потока через FFmpeg.
+    Отдаёт ровные чанки по block_size сэмплов (int16).
     """
     if url is None:
         url = config.RADIO_STREAM_URL
@@ -60,10 +84,13 @@ def stream_audio_chunks(url=None, block_size=None, read_timeout=None):
     if read_timeout is None:
         read_timeout = 20
 
-    if _find_ffmpeg() is None:
-        raise RuntimeError("ffmpeg не найден в PATH. Установите FFmpeg: https://ffmpeg.org/")
+    ffmpeg = _find_ffmpeg()
+    if not ffmpeg:
+        raise RuntimeError(
+            "ffmpeg не найден. Положите ffmpeg.exe рядом с программой "
+            "или установите FFmpeg и добавьте его в PATH."
+        )
 
-    # Доп. аргументы для сетевого источника: таймауты, reconnect
     extra = [
         "-rw_timeout", str(int(read_timeout * 1_000_000)),
         "-reconnect", "1",
@@ -71,25 +98,28 @@ def stream_audio_chunks(url=None, block_size=None, read_timeout=None):
         "-reconnect_delay_max", "5",
     ]
 
-    cmd = _ffmpeg_cmd(url, extra_args=extra)
-    bytes_per_sample = 2  # int16
-    chunk_bytes = block_size * config.CHANNELS * bytes_per_sample
+    cmd = _ffmpeg_cmd(ffmpeg, url, extra_args=extra)
+    chunk_bytes = block_size * config.CHANNELS * 2  # int16
+
+    creation_flags = 0
+    if os.name == "nt":
+        # Скрываем окно консоли FFmpeg в сборке без консоли
+        creation_flags = 0x08000000  # CREATE_NO_WINDOW
 
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         bufsize=chunk_bytes * 4,
+        creationflags=creation_flags,
     )
 
     try:
         while True:
-            # читаем ровно chunk_bytes (или меньше в самом конце)
             data = proc.stdout.read(chunk_bytes)
             if not data:
                 break
             _add_bytes(len(data))
-            # на случай, если ffmpeg вернул неполный блок — добиваем тишиной
             if len(data) < chunk_bytes:
                 data = data + b"\x00" * (chunk_bytes - len(data))
             yield data
@@ -108,13 +138,14 @@ def stream_from_device(device=None, block_size=None):
     import sounddevice as sd
     if block_size is None:
         block_size = config.BLOCK_SIZE
+
     stream = sd.InputStream(
         device=device,
         channels=config.CHANNELS,
         samplerate=config.SAMPLE_RATE,
         blocksize=block_size,
-        dtype='int16',
-        latency='low',
+        dtype="int16",
+        latency="low",
     )
     stream.start()
     try:
@@ -127,6 +158,7 @@ def stream_from_device(device=None, block_size=None):
 
 
 def stream_audio(source_type="stream", url=None, device=None, block_size=None, read_timeout=None):
+    """Диспетчер: поток или устройство."""
     if source_type == "device":
         return stream_from_device(device=device, block_size=block_size)
     return stream_audio_chunks(url=url, block_size=block_size, read_timeout=read_timeout)

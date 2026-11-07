@@ -4,33 +4,60 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Office Radio Overlay</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="apple-touch-icon" href="/static/favicon-256.png">
     <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
+<body data-role="{{ role }}">
 <div class="console-wrap">
-    <aside class="speaker speaker-left">
-        <div class="speaker-grille"></div>
-        <div class="speaker-badge">LSO-1</div>
-    </aside>
-
     <main class="console-main">
         <header class="topbar">
             <h1>📻 OFFICE RADIO OVERLAY</h1>
             <div class="user-block">
-                <span class="user-name">👤 {{ username }}</span>
+                <span class="user-name">
+                    👤 {{ username }}
+                    <span class="role-badge role-{{ role }}">
+                        {% if role == 'admin' %}админ{% else %}оператор{% endif %}
+                    </span>
+                </span>
+                <a href="/change-password" class="btn btn-logout">🔑 Пароль</a>
                 <form method="post" action="/logout" class="inline-form">
                     <button type="submit" class="btn btn-logout">Выйти</button>
                 </form>
             </div>
         </header>
 
-        <!-- СТАТУС -->
-        <div class="card">
-            <h2>Статус</h2>
+        <!-- ============ ТРАНСПОРТНАЯ ПАНЕЛЬ ============ -->
+        <div class="transport">
+            {% if role == 'admin' %}
+            <button class="transport-btn btn-play" id="btn-start" title="Запустить трансляцию">
+                <span class="t-icon">▶</span><span class="t-label">PLAY</span>
+            </button>
+            <button class="transport-btn btn-stop" id="btn-stop" title="Остановить трансляцию">
+                <span class="t-icon">⏹</span><span class="t-label">STOP</span>
+            </button>
+            <div class="transport-sep"></div>
+            {% endif %}
+            <button class="transport-btn" data-open="modal-announcements" title="Служебные объявления">
+                <span class="t-icon">📢</span><span class="t-label">ОБЪЯВЛЕНИЯ</span>
+            </button>
+            {% if role == 'admin' %}
+            <button class="transport-btn" data-open="modal-settings" title="Настройки">
+                <span class="t-icon">⚙</span><span class="t-label">НАСТРОЙКИ</span>
+            </button>
+            <button class="transport-btn" data-open="modal-sip" title="SIP / ЛСО">
+                <span class="t-icon">📞</span><span class="t-label">SIP</span>
+            </button>
+            {% endif %}
+            <button class="transport-btn" data-open="modal-about" title="О программе">
+                <span class="t-icon">ℹ</span><span class="t-label">О ПРОГРАММЕ</span>
+            </button>
+        </div>
 
-            <div class="meters-row">
-                <div class="meter-box">
-                    <div class="meter-label">SIGNAL</div>
+        <!-- ============ СТАТУС ============ -->
+        <div class="card">
+            <div class="dashboard">
+                <div class="gauge-wrap">
                     <svg viewBox="0 0 100 60" class="meter">
                         <path d="M10,52 A40,40 0 0,1 90,52" fill="none" stroke="#3a3024" stroke-width="1.5"/>
                         <line id="needle-signal" x1="50" y1="52" x2="50" y2="18"
@@ -38,11 +65,11 @@
                               transform="rotate(-90 50 52)"/>
                         <circle cx="50" cy="52" r="2.5" fill="#1f1813"/>
                     </svg>
+                    <div class="meter-label">SIGNAL</div>
                     <div class="meter-value"><span id="signal-db">-90.0</span><small>dBFS</small></div>
                 </div>
 
-                <div class="meter-box">
-                    <div class="meter-label">CPU</div>
+                <div class="gauge-wrap">
                     <svg viewBox="0 0 100 60" class="meter">
                         <path d="M10,52 A40,40 0 0,1 90,52" fill="none" stroke="#3a3024" stroke-width="1.5"/>
                         <line id="needle-cpu" x1="50" y1="52" x2="50" y2="18"
@@ -50,11 +77,11 @@
                               transform="rotate(-90 50 52)"/>
                         <circle cx="50" cy="52" r="2.5" fill="#1f1813"/>
                     </svg>
+                    <div class="meter-label">CPU</div>
                     <div class="meter-value"><span id="cpu-val">0</span><small>%</small></div>
                 </div>
 
-                <div class="meter-box">
-                    <div class="meter-label">NET</div>
+                <div class="gauge-wrap">
                     <svg viewBox="0 0 100 60" class="meter">
                         <path d="M10,52 A40,40 0 0,1 90,52" fill="none" stroke="#3a3024" stroke-width="1.5"/>
                         <line id="needle-net" x1="50" y1="52" x2="50" y2="18"
@@ -62,6 +89,7 @@
                               transform="rotate(-90 50 52)"/>
                         <circle cx="50" cy="52" r="2.5" fill="#1f1813"/>
                     </svg>
+                    <div class="meter-label">NET</div>
                     <div class="meter-value"><span id="net-val">0</span><small>KB/s</small></div>
                 </div>
 
@@ -80,12 +108,36 @@
                         <div class="led"></div>
                         <div class="lamp-label">ON AIR</div>
                     </div>
+                    <div class="lamp-item lamp-sip" id="ind-sip">
+                        <div class="led"></div>
+                        <div class="lamp-label">SIP</div>
+                    </div>
                 </div>
             </div>
 
-            <div class="equalizer-wrap">
-                <div class="eq-label">SPECTRUM</div>
-                <canvas id="eq-canvas" class="eq-canvas"></canvas>
+            <div class="panels-row">
+                <div class="equalizer-wrap">
+                    <div class="eq-label">SPECTRUM</div>
+                    <canvas id="eq-canvas" class="eq-canvas"></canvas>
+                </div>
+                <div class="equalizer-wrap">
+                    <div class="eq-label">СРАБОТКИ СУБТОНОВ</div>
+                    <canvas id="tone-canvas" class="eq-canvas"></canvas>
+                    <div class="tone-axis">
+                        <span>-5м</span><span>-4</span><span>-3</span><span>-2</span><span>-1</span><span>сейчас</span>
+                    </div>
+                    <div class="tone-stats">
+                        <span>CTCSS: <b id="th-ctcss-total">0</b></span>
+                        <span>DCS: <b id="th-dcs-total">0</b></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="queue-panel">
+                <div class="queue-label">ОЧЕРЕДЬ В ЭФИР</div>
+                <div id="queue-list" class="queue-list">
+                    <div class="queue-empty">Загрузка...</div>
+                </div>
             </div>
 
             <div class="status-grid">
@@ -97,223 +149,304 @@
                 <div><span class="label">Событие:</span><span id="event" class="value">—</span></div>
                 <div style="grid-column: 1 / -1"><span class="label">Ошибка:</span><span id="error" class="value">—</span></div>
             </div>
-
-            <div class="buttons">
-                <button id="btn-start" class="btn btn-start">▶ Запустить</button>
-                <button id="btn-stop" class="btn btn-stop">■ Остановить</button>
-            </div>
-
-            <label class="checkbox-row" style="margin-top:12px;">
-                <input type="checkbox" id="auto_start_engine">
-                Автозапускать движок при старте сервера
-            </label>
         </div>
 
-        <!-- ГИСТОГРАММА -->
+        <!-- ============ ВЫХОД АУДИО (на главной) ============ -->
         <div class="card">
-            <h2>Сработки субтонов</h2>
-            <div class="tone-stats">
-                <div>CTCSS: <b id="th-ctcss-total">0</b></div>
-                <div>DCS: <b id="th-dcs-total">0</b></div>
-                <div class="muted">окно 5 мин · шаг 5 сек</div>
-            </div>
-            <canvas id="tone-canvas" height="100"></canvas>
-            <div class="tone-axis">
-                <span>-5 мин</span><span>-4</span><span>-3</span><span>-2</span><span>-1</span><span>сейчас</span>
-            </div>
-        </div>
+            <h2>🔊 Выход аудио</h2>
 
-        <!-- ИСТОЧНИК + FALLBACK -->
-        <div class="card">
-            <h2>Источник сигнала</h2>
-            <div class="source-options">
-                <label class="radio-row"><input type="radio" name="source_type" value="stream"> Интернет-поток</label>
-                <label class="radio-row"><input type="radio" name="source_type" value="device"> Устройство захвата</label>
-            </div>
-            <div id="source-stream" class="source-block">
-                <div class="form-row">
-                    <label>URL потока <input type="text" id="source-url"></label>
+            <div class="output-grid">
+                <div class="output-panel">
+                    <div class="output-panel-title">Веб-плеер (этот браузер)</div>
+                    <div class="player-row">
+                        <button type="button" id="btn-stream-connect" class="btn btn-start">▶ Подключить</button>
+                        <audio id="player" controls></audio>
+                    </div>
+                    <div class="form-row">
+                        <label>Устройство вывода
+                            <select id="sink-select"><option value="">По умолчанию</option></select>
+                        </label>
+                        <label>&nbsp;
+                            <button type="button" id="btn-refresh-sinks" class="btn btn-refresh">🔄 Обновить</button>
+                        </label>
+                    </div>
+                    <div class="hint">Выбор устройства в браузере работает на <code>localhost</code> или HTTPS.</div>
                 </div>
-            </div>
-            <div id="source-device" class="source-block">
-                <div class="form-row">
-                    <label>Устройство ввода
-                        <select id="source-device-select"><option value="">По умолчанию</option></select>
-                    </label>
-                    <label>&nbsp;<button type="button" id="btn-refresh-devices" class="btn btn-refresh">🔄 Обновить</button></label>
-                </div>
-            </div>
 
-            <div class="fallback-block">
-                <h3>🔁 Резервные каналы (fallback)</h3>
-                <label class="checkbox-row">
-                    <input type="checkbox" id="fallback_enabled">
-                    Включать резервный поток, если основной не отвечает
-                </label>
-                <div class="form-row">
-                    <label>Таймаут, сек
-                        <input type="number" step="1" min="3" name="fallback_timeout_seconds" id="fallback_timeout_seconds">
-                    </label>
-                    <label>Проверять основной раз в, сек
-                        <input type="number" step="5" min="10" name="fallback_retry_main_seconds" id="fallback_retry_main_seconds">
-                    </label>
+                {% if role == 'admin' %}
+                <div class="output-panel">
+                    <div class="output-panel-title">Аппаратный выход (сервер)</div>
+                    <div class="form-row">
+                        <label>Устройство воспроизведения
+                            <select id="hw-output-select"><option value="">Отключён</option></select>
+                        </label>
+                        <label>&nbsp;
+                            <button type="button" id="btn-refresh-hw-outputs" class="btn btn-refresh">🔄 Обновить</button>
+                        </label>
+                    </div>
+                    <button type="button" id="btn-apply-hw-output" class="btn btn-save">✅ Применить</button>
+                    <div class="hint">Используется для офисного усилителя, SIP/ЛСО, виртуального кабеля.</div>
                 </div>
-                <div id="fallback-list" class="fallback-list"></div>
-                <div class="form-row" style="margin-top:8px;">
-                    <label>Название <input type="text" id="new-fallback-name" placeholder="Резерв 1"></label>
-                    <label>URL <input type="text" id="new-fallback-url" placeholder="https://..."></label>
-                </div>
-                <button type="button" id="btn-add-fallback" class="btn btn-add">➕ Добавить резерв</button>
+                {% endif %}
             </div>
 
-            <button type="button" id="btn-apply-source" class="btn btn-save" style="margin-top:12px;">✅ Применить источник</button>
-            <span id="source-status" class="upload-status"></span>
-        </div>
-
-        <!-- ВЫХОД АУДИО -->
-        <div class="card">
-            <h2>Выход аудио</h2>
-            <div class="output-section">
-                <h3>Веб-плеер (этот браузер)</h3>
-                <div class="player-row">
-                    <button type="button" id="btn-stream-connect" class="btn btn-start">▶ Подключить</button>
-                    <audio id="player" controls></audio>
-                </div>
-                <div class="form-row">
-                    <label>Устройство вывода
-                        <select id="sink-select"><option value="">По умолчанию</option></select>
-                    </label>
-                    <label>&nbsp;<button type="button" id="btn-refresh-sinks" class="btn btn-refresh">🔄 Обновить</button></label>
-                </div>
-            </div>
-            <div class="output-section">
-                <h3>Аппаратный выход (на сервере)</h3>
-                <div class="form-row">
-                    <label>Устройство
-                        <select id="hw-output-select"><option value="">Отключён</option></select>
-                    </label>
-                    <label>&nbsp;<button type="button" id="btn-refresh-hw-outputs" class="btn btn-refresh">🔄 Обновить</button></label>
-                </div>
-                <button type="button" id="btn-apply-hw-output" class="btn btn-save">✅ Применить</button>
-            </div>
             <span id="output-status" class="upload-status"></span>
         </div>
 
-        <!-- ОБЪЯВЛЕНИЯ -->
-        <div class="card">
-            <h2>Служебные объявления</h2>
-            <form id="upload-form" class="upload-form">
-                <div class="form-row">
-                    <label>Файл <input type="file" name="file" accept=".wav,.mp3,.ogg,.flac,.m4a" required></label>
-                    <label>Описание <input type="text" name="description" placeholder="Обед с 13:00"></label>
-                </div>
-                <div class="form-row form-row-3">
-                    <label>С (HH:MM) <input type="time" name="start_time"></label>
-                    <label>До (HH:MM) <input type="time" name="end_time"></label>
-                    <label>Повторов/день <input type="number" name="repeat_limit" min="0" value="0"></label>
-                </div>
-                <button type="submit" class="btn btn-save">⬆ Загрузить</button>
-                <span id="upload-status" class="upload-status"></span>
-            </form>
-            <table class="ann-table">
-                <thead><tr>
-                    <th></th><th>Файл / описание</th><th>Расписание</th>
-                    <th>Сегодня</th><th>Всего</th><th>Последний</th><th>Действия</th>
-                </tr></thead>
-                <tbody id="ann-tbody">
-                    <tr><td colspan="7" class="empty">Загрузок пока нет</td></tr>
-                </tbody>
+        <footer class="footer">
+            © 2026 Andrey Geben · <a href="https://github.com/andrey-geben/office_radio_overlay" target="_blank">Office Radio Overlay</a> · MIT License · v1.0.0
+        </footer>
+    </main>
+</div>
+
+<!-- ============ МОДАЛКА: ОБЪЯВЛЕНИЯ ============ -->
+<div class="modal" id="modal-announcements">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-content">
+        <button class="modal-close" data-close>×</button>
+        <h2>📢 Служебные объявления</h2>
+
+        <div class="hint" style="margin-bottom:12px;">
+            ⚠️ Расписание <b>обязательно</b>: время начала + одно из — время окончания или лимит повторов.
+        </div>
+        <div class="hint" style="margin-bottom:12px;">
+            ⏱ <b>Интервал</b> — минимальная пауза между показами одного файла (например, «24/день» + «60м» = раз в час).
+        </div>
+
+        <form id="upload-form" class="upload-form">
+            <div class="form-row">
+                <label>Файл <input type="file" name="file" accept=".wav,.mp3,.ogg,.flac,.m4a" required></label>
+                <label>Описание <input type="text" name="description" placeholder="Обед с 13:00"></label>
+            </div>
+            <div class="form-row form-row-3">
+                <label>С (HH:MM) * <input type="time" name="start_time" required></label>
+                <label>До (HH:MM) <input type="time" name="end_time"></label>
+                <label>Повторов/день <input type="number" name="repeat_limit" min="0" value="0"></label>
+            </div>
+            <div class="form-row">
+                <label>Мин. интервал, мин (0 = без паузы)
+                    <input type="number" name="min_interval_minutes" min="0" value="0" placeholder="60 для «раз в час»">
+                </label>
+                <label>&nbsp;</label>
+            </div>
+            <button type="submit" class="btn btn-save">⬆ Загрузить</button>
+            <span id="upload-status" class="upload-status"></span>
+        </form>
+
+        <table class="ann-table">
+            <thead><tr>
+                <th></th><th>Файл / описание</th><th>Расписание</th>
+                <th>Сегодня</th><th>Всего</th><th>Последний</th><th>Действия</th>
+            </tr></thead>
+            <tbody id="ann-tbody">
+                <tr><td colspan="7" class="empty">Загрузок пока нет</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if role == 'admin' %}
+<!-- ============ МОДАЛКА: НАСТРОЙКИ ============ -->
+<div class="modal" id="modal-settings">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-content">
+        <button class="modal-close" data-close>×</button>
+        <h2>⚙ Настройки</h2>
+
+        <h3>Источник сигнала</h3>
+        <div class="source-options">
+            <label class="radio-row"><input type="radio" name="source_type" value="stream"> Интернет-поток</label>
+            <label class="radio-row"><input type="radio" name="source_type" value="device"> Устройство захвата</label>
+        </div>
+        <div id="source-stream" class="source-block">
+            <div class="form-row">
+                <label>URL потока <input type="text" id="source-url"></label>
+            </div>
+        </div>
+        <div id="source-device" class="source-block">
+            <div class="form-row">
+                <label>Устройство ввода
+                    <select id="source-device-select"><option value="">По умолчанию</option></select>
+                </label>
+                <label>&nbsp;<button type="button" id="btn-refresh-devices" class="btn btn-refresh">🔄 Обновить</button></label>
+            </div>
+        </div>
+
+        <div class="fallback-block">
+            <h3>🔁 Резервные каналы</h3>
+            <label class="checkbox-row">
+                <input type="checkbox" id="fallback_enabled">
+                Включать резерв, если основной не отвечает
+            </label>
+            <div class="form-row">
+                <label>Таймаут, сек <input type="number" step="1" min="3" name="fallback_timeout_seconds" id="fallback_timeout_seconds"></label>
+                <label>Retry, сек <input type="number" step="5" min="10" name="fallback_retry_main_seconds" id="fallback_retry_main_seconds"></label>
+            </div>
+            <div id="fallback-list" class="fallback-list"></div>
+            <div class="form-row" style="margin-top:8px;">
+                <label>Название <input type="text" id="new-fallback-name" placeholder="Резерв 1"></label>
+                <label>URL <input type="text" id="new-fallback-url" placeholder="https://..."></label>
+            </div>
+            <button type="button" id="btn-add-fallback" class="btn btn-add">➕ Добавить резерв</button>
+        </div>
+
+        <button type="button" id="btn-apply-source" class="btn btn-save" style="margin-top:12px;">✅ Применить источник</button>
+        <span id="source-status" class="upload-status"></span>
+
+        <h3 style="margin-top:24px;">Детекторы субтонов</h3>
+        <div class="scan-block">
+            <div class="scan-row">
+                <button type="button" id="btn-scan-tone" class="btn btn-scan">🔍 Сканировать (3 сек)</button>
+                <span id="scan-status" class="upload-status"></span>
+            </div>
+            <div id="scan-results" class="scan-results"></div>
+        </div>
+        <form id="settings-form">
+            <div class="form-row">
+                <label>CTCSS Гц <input type="number" step="0.1" name="tone_freq" id="tone_freq"></label>
+                <label>CTCSS порог <input type="number" step="0.001" name="detection_threshold" id="detection_threshold"></label>
+            </div>
+            <div class="form-row">
+                <label>DCS Гц <input type="number" step="0.1" name="dcs_freq" id="dcs_freq"></label>
+                <label>DCS порог <input type="number" step="0.001" name="dcs_threshold" id="dcs_threshold"></label>
+            </div>
+            <div class="form-row">
+                <label>Ducking <input type="number" step="0.05" name="ducking_level" id="ducking_level"></label>
+                <label>Громкость объявления <input type="number" step="0.05" name="announcement_level" id="announcement_level"></label>
+            </div>
+            <div class="form-row">
+                <label>Затухание, мс <input type="number" step="50" min="0" name="fade_out_ms" id="fade_out_ms"></label>
+                <label>Нарастание, мс <input type="number" step="50" min="0" name="fade_in_ms" id="fade_in_ms"></label>
+            </div>
+            <div class="form-row">
+                <label>Таймаут без тона, сек
+                    <input type="number" step="30" min="0" name="tone_timeout_seconds" id="tone_timeout_seconds">
+                </label>
+                <label class="checkbox-row" style="align-self:end; margin-bottom:8px;">
+                    <input type="checkbox" name="tone_timeout_enabled" id="tone_timeout_enabled">
+                    Вставлять по таймауту
+                </label>
+            </div>
+            <button type="submit" class="btn btn-save">💾 Сохранить настройки</button>
+        </form>
+
+        <h3 style="margin-top:24px;">Автозапуск</h3>
+        <label class="checkbox-row">
+            <input type="checkbox" id="auto_start_engine">
+            Автозапускать движок при старте сервера
+        </label>
+
+        <h3 style="margin-top:24px;">👥 Пользователи</h3>
+        <div class="form-row">
+            <label>Логин <input type="text" id="new_user_name" placeholder="operator1" minlength="3"></label>
+            <label>Пароль <input type="password" id="new_user_pass" placeholder="мин. 4 символа" minlength="4"></label>
+        </div>
+        <div class="form-row">
+            <label>Роль
+                <select id="new_user_role">
+                    <option value="operator">Оператор (только объявления)</option>
+                    <option value="admin">Администратор (полный доступ)</option>
+                </select>
+            </label>
+            <label class="checkbox-row" style="align-self:end; margin-bottom:8px;">
+                <input type="checkbox" id="new_user_must_change" checked>
+                Требовать смену пароля
+            </label>
+        </div>
+        <button type="button" id="btn-create-user" class="btn btn-save">➕ Создать пользователя</button>
+        <span id="user-status" class="upload-status"></span>
+        <table class="ann-table" style="margin-top:16px;">
+            <thead><tr>
+                <th>Логин</th><th>Роль</th><th>Создан</th><th>Сменить пароль</th><th>Действия</th>
+            </tr></thead>
+            <tbody id="users-tbody">
+                <tr><td colspan="5" class="empty">Загрузка...</td></tr>
+            </tbody>
+        </table>
+
+        <h3 style="margin-top:24px;">Тестирование</h3>
+        <label class="checkbox-row">
+            <input type="checkbox" id="simulate">
+            Симулировать управляющий тон
+        </label>
+    </div>
+</div>
+
+<!-- ============ МОДАЛКА: SIP ============ -->
+<div class="modal" id="modal-sip">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-content">
+        <button class="modal-close" data-close>×</button>
+        <h2>📞 SIP / ЛСО</h2>
+        <div class="form-row">
+            <label>SIP-домен <input type="text" id="sip_domain" placeholder="sip.example.com"></label>
+            <label>Логин <input type="text" id="sip_username" placeholder="office_radio"></label>
+        </div>
+        <div class="form-row">
+            <label>Пароль <input type="password" id="sip_password" placeholder="Введите пароль"></label>
+            <label>Порт <input type="number" id="sip_port" value="5060" min="1" max="65535"></label>
+        </div>
+        <div class="form-row">
+            <label>Транспорт
+                <select id="sip_transport"><option value="udp">UDP</option><option value="tcp">TCP</option></select>
+            </label>
+            <label class="checkbox-row" style="align-self:end; margin-bottom:8px;">
+                <input type="checkbox" id="auto_start_sip">
+                Автозапускать SIP
+            </label>
+        </div>
+        <div class="buttons">
+            <button type="button" id="btn-sip-save" class="btn btn-save">💾 Сохранить</button>
+            <button type="button" id="btn-sip-start" class="btn btn-start">▶ Подключить</button>
+            <button type="button" id="btn-sip-stop" class="btn btn-stop">■ Отключить</button>
+        </div>
+        <div class="status-grid" style="margin-top:16px;">
+            <div><span class="label">Статус SIP:</span><span id="sip-status" class="value">—</span></div>
+            <div><span class="label">Режим звонка:</span><span id="sip-engine" class="value">—</span></div>
+        </div>
+        <span id="sip-message" class="upload-status"></span>
+        <div class="hint" style="margin-top:16px;">
+            При входящем звонке радио приостановится, аудио звонка пойдёт на устройство сервера по умолчанию.
+            После завершения — радио возобновится.
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ============ МОДАЛКА: О ПРОГРАММЕ ============ -->
+<div class="modal" id="modal-about">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-content">
+        <button class="modal-close" data-close>×</button>
+        <h2>ℹ О программе</h2>
+        <div class="about-block">
+            <h3>📻 Office Radio Overlay <span id="about-version">v1.0.0</span></h3>
+            <p>Система трансляции интернет-радио с автоматической вставкой служебных объявлений по управляющему субтону (CTCSS/DCS), поддержкой SIP-звонков (ЛСО) и резервных источников.</p>
+            <table class="about-table">
+                <tr><td>Автор:</td><td id="about-author">—</td></tr>
+                <tr><td>Лицензия:</td><td id="about-license">MIT</td></tr>
+                <tr><td>GitHub:</td><td><a href="#" target="_blank" id="about-github">—</a></td></tr>
             </table>
         </div>
 
-        <!-- НАСТРОЙКИ ДЕТЕКТОРОВ -->
-        <div class="card">
-            <h2>Настройки детекторов</h2>
-            <div class="scan-block">
-                <h3>🔍 Анализ субтонов</h3>
-                <div class="scan-row">
-                    <button type="button" id="btn-scan-tone" class="btn btn-scan">🔍 Сканировать (3 сек)</button>
-                    <span id="scan-status" class="upload-status"></span>
-                </div>
-                <div id="scan-results" class="scan-results"></div>
-            </div>
-            <form id="settings-form">
-                <div class="form-row">
-                    <label>CTCSS Гц <input type="number" step="0.1" name="tone_freq" id="tone_freq"></label>
-                    <label>CTCSS порог <input type="number" step="0.001" name="detection_threshold" id="detection_threshold"></label>
-                </div>
-                <div class="form-row">
-                    <label>DCS Гц <input type="number" step="0.1" name="dcs_freq" id="dcs_freq"></label>
-                    <label>DCS порог <input type="number" step="0.001" name="dcs_threshold" id="dcs_threshold"></label>
-                </div>
-                <div class="form-row">
-                    <label>Ducking <input type="number" step="0.05" name="ducking_level" id="ducking_level"></label>
-                    <label>Громкость объявления <input type="number" step="0.05" name="announcement_level" id="announcement_level"></label>
-                </div>
-                <div class="form-row">
-                    <label>Затухание, мс <input type="number" step="50" min="0" name="fade_out_ms" id="fade_out_ms"></label>
-                    <label>Нарастание, мс <input type="number" step="50" min="0" name="fade_in_ms" id="fade_in_ms"></label>
-                </div>
-                <div class="form-row">
-                    <label>Таймаут без тона, сек
-                        <input type="number" step="30" min="0" name="tone_timeout_seconds" id="tone_timeout_seconds">
-                    </label>
-                    <label class="checkbox-row" style="align-self:end; margin-bottom:8px;">
-                        <input type="checkbox" name="tone_timeout_enabled" id="tone_timeout_enabled">
-                        Вставлять по таймауту
-                    </label>
-                </div>
-                <button type="submit" class="btn btn-save">💾 Сохранить</button>
-            </form>
+        <h3 style="margin-top:20px;">📖 Справка (из README)</h3>
+        <div class="about-readme">
+            <pre id="about-readme-text">Загрузка...</pre>
         </div>
+        <a href="#" target="_blank" id="about-full-readme" class="btn btn-save" style="margin-top:12px;display:inline-block;">
+            📄 Полный README на GitHub
+        </a>
 
-        <!-- SIP -->
-        <div class="card">
-            <h2>SIP / ЛСО</h2>
-            <div class="form-row">
-                <label>SIP-домен <input type="text" id="sip_domain" placeholder="sip.example.com"></label>
-                <label>Логин <input type="text" id="sip_username" placeholder="office_radio"></label>
-            </div>
-            <div class="form-row">
-                <label>Пароль <input type="password" id="sip_password" placeholder="Введите пароль"></label>
-                <label>Порт <input type="number" id="sip_port" value="5060" min="1" max="65535"></label>
-            </div>
-            <div class="form-row">
-                <label>Транспорт
-                    <select id="sip_transport"><option value="udp">UDP</option><option value="tcp">TCP</option></select>
-                </label>
-                <label class="checkbox-row" style="align-self:end; margin-bottom:8px;">
-                    <input type="checkbox" id="auto_start_sip">
-                    Автозапускать SIP
-                </label>
-            </div>
-            <div class="buttons">
-                <button type="button" id="btn-sip-save" class="btn btn-save">💾 Сохранить</button>
-                <button type="button" id="btn-sip-start" class="btn btn-start">▶ Подключить</button>
-                <button type="button" id="btn-sip-stop" class="btn btn-stop">■ Отключить</button>
-            </div>
-            <div class="status-grid" style="margin-top:16px;">
-                <div><span class="label">Статус SIP:</span><span id="sip-status" class="value">—</span></div>
-                <div><span class="label">Режим звонка:</span><span id="sip-engine" class="value">—</span></div>
-            </div>
-            <span id="sip-message" class="upload-status"></span>
+        <h3 style="margin-top:20px;">⚖️ Авторские права</h3>
+        <div class="about-copyright">
+            <p>© 2026 Andrey Geben. Все права защищены в соответствии с лицензией MIT.</p>
+            <p style="font-size:0.85rem;color:#8a7048;">
+                Разрешается свободное использование, модификация и распространение при сохранении уведомления об авторских правах.
+            </p>
         </div>
-
-        <!-- ТЕСТИРОВАНИЕ -->
-        <div class="card">
-            <h2>Тестирование</h2>
-            <label class="checkbox-row">
-                <input type="checkbox" id="simulate">
-                Симулировать управляющий тон
-            </label>
-        </div>
-    </main>
-
-    <aside class="speaker speaker-right">
-        <div class="speaker-grille"></div>
-        <div class="speaker-badge">LSO-1</div>
-    </aside>
+    </div>
 </div>
+
 <script src="/static/app.js"></script>
 </body>
 </html>

@@ -1,13 +1,18 @@
 # announcement_store.py
 import os
+import sys
 import json
 import uuid
 import time
 import threading
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pydub import AudioSegment
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, "frozen", False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 AUDIO_DIR = os.path.join(BASE_DIR, "assets", "announcements")
 META_FILE = os.path.join(BASE_DIR, "assets", "announcements.json")
 ALLOWED_EXT = {".wav", ".mp3", ".ogg", ".flac", ".m4a"}
@@ -34,6 +39,50 @@ def _write_meta(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+def _norm_time(v):
+    """Приводит 'HH:MM' к каноничному виду или возвращает None."""
+    if not v:
+        return None
+    v = str(v).strip()
+    if len(v) == 5 and v[2] == ":":
+        hh, mm = v.split(":")
+        if hh.isdigit() and mm.isdigit():
+            h, m = int(hh), int(mm)
+            if 0 <= h < 24 and 0 <= m < 60:
+                return f"{h:02d}:{m:02d}"
+    return None
+
+
+def _norm_limit(v):
+    try:
+        n = int(v) if v not in (None, "", "0") else 0
+    except (TypeError, ValueError):
+        n = 0
+    return max(0, n)
+
+
+def _norm_interval_minutes(v):
+    """Минимальный интервал между показами одного объявления, в минутах."""
+    try:
+        n = int(v) if v not in (None, "", "0") else 0
+    except (TypeError, ValueError):
+        n = 0
+    return max(0, n)
+
+
+def _validate_schedule(start_time, end_time, repeat_limit):
+    if not start_time:
+        raise ValueError(
+            "Укажите время начала действия (start_time). "
+            "Без расписания объявление будет звучать постоянно."
+        )
+    if not end_time and (repeat_limit or 0) <= 0:
+        raise ValueError(
+            "Укажите время окончания (end_time) или лимит повторов в день (repeat_limit). "
+            "Иначе объявление будет звучать постоянно."
+        )
+
+
 def list_announcements():
     with _write_lock:
         data = _read_meta()
@@ -43,6 +92,9 @@ def list_announcements():
             if item.get("last_reset_date") != today:
                 item["plays_today"] = 0
                 item["last_reset_date"] = today
+                changed = True
+            if "min_interval_minutes" not in item:
+                item["min_interval_minutes"] = 0
                 changed = True
         if changed:
             _write_meta(data)
@@ -63,12 +115,20 @@ def get_path(ann_id):
     return os.path.join(AUDIO_DIR, item["filename"])
 
 
-def add_announcement(file_storage, description, start_time=None, end_time=None, repeat_limit=0):
+def add_announcement(file_storage, description, start_time=None, end_time=None,
+                     repeat_limit=0, min_interval_minutes=0):
     _ensure_dirs()
     original = file_storage.filename or "audio"
     ext = os.path.splitext(original)[1].lower()
     if ext not in ALLOWED_EXT:
         raise ValueError(f"Неподдерживаемый формат: {ext}")
+
+    start_time = _norm_time(start_time)
+    end_time = _norm_time(end_time)
+    repeat_limit = _norm_limit(repeat_limit)
+    min_interval_minutes = _norm_interval_minutes(min_interval_minutes)
+
+    _validate_schedule(start_time, end_time, repeat_limit)
 
     ann_id = uuid.uuid4().hex[:10]
     filename = f"{ann_id}{ext}"
@@ -84,24 +144,6 @@ def add_announcement(file_storage, description, start_time=None, end_time=None, 
     except Exception:
         duration = None
 
-    def _norm_time(v):
-        if not v:
-            return None
-        v = str(v).strip()
-        if len(v) == 5 and v[2] == ":":
-            hh, mm = v.split(":")
-            if hh.isdigit() and mm.isdigit() and 0 <= int(hh) < 24 and 0 <= int(mm) < 60:
-                return v
-        return None
-
-    start_time = _norm_time(start_time)
-    end_time = _norm_time(end_time)
-    try:
-        repeat_limit = int(repeat_limit) if repeat_limit not in (None, "", "0") else 0
-        repeat_limit = max(0, repeat_limit)
-    except (TypeError, ValueError):
-        repeat_limit = 0
-
     item = {
         "id": ann_id,
         "original_name": original,
@@ -113,6 +155,7 @@ def add_announcement(file_storage, description, start_time=None, end_time=None, 
         "start_time": start_time,
         "end_time": end_time,
         "repeat_limit": repeat_limit,
+        "min_interval_minutes": min_interval_minutes,
         "plays_today": 0,
         "plays_total": 0,
         "last_played": None,
@@ -143,23 +186,33 @@ def delete_announcement(ann_id):
         return True
 
 
-def update_schedule(ann_id, start_time, end_time, repeat_limit):
+def update_schedule(ann_id, start_time, end_time, repeat_limit, min_interval_minutes=0):
+    start_time = _norm_time(start_time)
+    end_time = _norm_time(end_time)
+    repeat_limit = _norm_limit(repeat_limit)
+    min_interval_minutes = _norm_interval_minutes(min_interval_minutes)
+
+    _validate_schedule(start_time, end_time, repeat_limit)
+
     with _write_lock:
         data = _read_meta()
         for item in data:
             if item["id"] == ann_id:
-                item["start_time"] = start_time or None
-                item["end_time"] = end_time or None
-                try:
-                    item["repeat_limit"] = max(0, int(repeat_limit or 0))
-                except (TypeError, ValueError):
-                    item["repeat_limit"] = 0
+                item["start_time"] = start_time
+                item["end_time"] = end_time
+                item["repeat_limit"] = repeat_limit
+                item["min_interval_minutes"] = min_interval_minutes
                 _write_meta(data)
                 return item
     return None
 
 
 def check_playable(item, now=None):
+    """
+    Возвращает (ok, reason).
+    Учитывает: окно времени, лимит повторов в день,
+    минимальный интервал между показами одного файла.
+    """
     if now is None:
         now = datetime.now()
     today = now.date().isoformat()
@@ -177,6 +230,20 @@ def check_playable(item, now=None):
     limit = item.get("repeat_limit", 0) or 0
     if limit > 0 and plays_today >= limit:
         return False, f"лимит {limit}/день"
+
+    # Минимальный интервал между показами
+    interval_min = item.get("min_interval_minutes", 0) or 0
+    if interval_min > 0:
+        last_played = item.get("last_played")
+        if last_played:
+            try:
+                last_dt = datetime.fromisoformat(last_played)
+                delta = now - last_dt
+                if delta < timedelta(minutes=interval_min):
+                    next_dt = last_dt + timedelta(minutes=interval_min)
+                    return False, f"интервал до {next_dt.strftime('%H:%M')}"
+            except Exception:
+                pass
 
     return True, "ok"
 
