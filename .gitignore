@@ -9,6 +9,7 @@ dist/
 *.egg-info/
 .installed.cfg
 *.egg
+.idea/
 
 # Virtual environments
 .venv/
@@ -42,3 +43,6 @@ logs/
 # Временные
 *.tmp
 *.bak
+assets/users.json
+
+.idea/
