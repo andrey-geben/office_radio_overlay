@@ -1,0 +1,565 @@
+* { box-sizing: border-box; }
+
+body {
+    font-family: "Segoe UI", "Trebuchet MS", system-ui, sans-serif;
+    background:
+        radial-gradient(ellipse at top, #2a1f14 0%, #14100b 100%);
+    margin: 0;
+    padding: 0;
+    color: #e8d5b0;
+    min-height: 100vh;
+}
+
+/* ===== КОРПУС ===== */
+.console-wrap {
+    display: grid;
+    grid-template-columns: 160px 1fr 160px;
+    gap: 0;
+    min-height: 100vh;
+    width: 100%;
+}
+
+/* ===== КОЛОНКИ ===== */
+.speaker {
+    background:
+        linear-gradient(180deg, #4a3722 0%, #2b1f14 40%, #1a1209 100%);
+    border: 2px solid #1a1209;
+    box-shadow:
+        inset 0 0 40px rgba(0,0,0,0.8),
+        inset 2px 0 6px rgba(255,220,160,0.05),
+        inset -2px 0 6px rgba(255,220,160,0.05);
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 12px;
+    overflow: hidden;
+}
+.speaker-left { border-right: 3px solid #0a0805; }
+.speaker-right { border-left: 3px solid #0a0805; }
+
+.speaker-grille {
+    flex: 1;
+    width: 100%;
+    background:
+        repeating-radial-gradient(
+            circle at center,
+            transparent 0px, transparent 3px,
+            rgba(0,0,0,0.55) 3px, rgba(0,0,0,0.55) 5px
+        ),
+        radial-gradient(circle at center, #3a2a18 0%, #1a1209 70%);
+    border-radius: 50%;
+    border: 4px solid #0a0805;
+    box-shadow:
+        inset 0 0 30px rgba(0,0,0,0.9),
+        0 0 12px rgba(0,0,0,0.5);
+    margin: 20px 0;
+    aspect-ratio: 1 / 1;
+    max-height: 60vh;
+}
+
+.speaker-badge {
+    font-family: "Courier New", monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.3em;
+    color: #d4a86a;
+    background: linear-gradient(180deg, #2a1f14, #0a0805);
+    border: 1px solid #5a3f22;
+    padding: 4px 12px;
+    border-radius: 3px;
+    box-shadow: 0 0 6px rgba(255,180,80,0.15);
+}
+
+/* ===== КОНСОЛЬ ===== */
+.console-main {
+    padding: 24px 32px;
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid #3a2818;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.topbar h1 {
+    margin: 0;
+    font-size: 1.5rem;
+    letter-spacing: 0.15em;
+    color: #d4a86a;
+    text-shadow: 0 0 8px rgba(255,180,80,0.3);
+    font-family: "Courier New", monospace;
+}
+
+.user-block { display: flex; align-items: center; gap: 14px; }
+.user-name { color: #b89870; font-size: 0.9rem; }
+.inline-form { margin: 0; }
+
+/* ===== КАРТОЧКИ ===== */
+.card {
+    background:
+        linear-gradient(180deg, #2e2318 0%, #1f1610 100%);
+    border: 2px solid #0f0a06;
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow:
+        inset 0 1px 0 rgba(255,220,160,0.1),
+        inset 0 -1px 0 rgba(0,0,0,0.6),
+        0 4px 12px rgba(0,0,0,0.5);
+    position: relative;
+}
+.card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,200,120,0.2), transparent);
+}
+.card h2 {
+    margin-top: 0;
+    font-size: 1rem;
+    color: #d4a86a;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-family: "Courier New", monospace;
+    border-bottom: 1px dashed #4a3720;
+    padding-bottom: 10px;
+    margin-bottom: 16px;
+}
+
+/* ===== СТРЕЛОЧНЫЕ ИНДИКАТОРЫ ===== */
+.meters-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr auto;
+    gap: 16px;
+    align-items: stretch;
+    margin-bottom: 16px;
+}
+.meter-box {
+    background: linear-gradient(180deg, #1a1209, #0a0805);
+    border: 1px solid #3a2818;
+    border-radius: 6px;
+    padding: 10px;
+    text-align: center;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.9);
+}
+.meter-label {
+    font-family: "Courier New", monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.2em;
+    color: #8a7048;
+    margin-bottom: 4px;
+}
+.meter { width: 100%; max-height: 60px; }
+.meter-value {
+    font-family: "Courier New", monospace;
+    font-size: 1.05rem;
+    color: #ffdc8a;
+    margin-top: 4px;
+    font-weight: 700;
+    text-shadow: 0 0 6px rgba(255,180,80,0.4);
+}
+.meter-value small {
+    font-size: 0.65rem;
+    color: #8a7048;
+    margin-left: 4px;
+}
+
+/* ===== ЛАМПОЧКИ (вертикально) ===== */
+.lamps-column {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.lamp-item {
+    display: grid;
+    grid-template-columns: 20px 1fr;
+    grid-template-rows: auto auto;
+    gap: 2px 8px;
+    align-items: center;
+    background: linear-gradient(180deg, #1a1209, #0a0805);
+    border: 1px solid #3a2818;
+    border-radius: 5px;
+    padding: 6px 10px;
+    min-width: 130px;
+    transition: all 0.15s;
+}
+.lamp-item .led {
+    grid-row: 1 / 3;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #3a3a3a, #0a0a0a);
+    box-shadow: inset 0 -1px 3px rgba(0,0,0,0.9);
+    transition: all 0.1s;
+}
+.lamp-label {
+    font-family: "Courier New", monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.15em;
+    color: #8a7048;
+    font-weight: 700;
+}
+.lamp-power {
+    font-family: "Courier New", monospace;
+    font-size: 0.65rem;
+    color: #5a4a32;
+}
+
+.lamp-item.active { border-color: #d4a86a; }
+.lamp-item.active .led {
+    background: radial-gradient(circle at 30% 30%, #7aff7a, #0f6b0f);
+    box-shadow: 0 0 12px rgba(120,255,120,0.7), inset 0 -1px 3px rgba(0,0,0,0.5);
+}
+.lamp-dcs.active .led {
+    background: radial-gradient(circle at 30% 30%, #7ab8ff, #0f3d6b);
+    box-shadow: 0 0 12px rgba(120,180,255,0.7), inset 0 -1px 3px rgba(0,0,0,0.5);
+}
+.lamp-onair.active .led {
+    background: radial-gradient(circle at 30% 30%, #ff7a7a, #6b0f0f);
+    box-shadow: 0 0 12px rgba(255,120,120,0.8), inset 0 -1px 3px rgba(0,0,0,0.5);
+    animation: pulse 1s infinite;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* ===== ЭКВАЛАЙЗЕР ===== */
+.equalizer-wrap {
+    background: linear-gradient(180deg, #0a0805, #000);
+    border: 1px solid #3a2818;
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 16px;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.9);
+}
+.eq-label {
+    font-family: "Courier New", monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.25em;
+    color: #8a7048;
+    margin-bottom: 6px;
+}
+.eq-canvas {
+    width: 100%;
+    height: 80px;
+    display: block;
+}
+
+/* ===== СТАТУС-СЕТКА ===== */
+.status-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px 16px;
+    margin-bottom: 16px;
+    padding: 12px;
+    background: #0a0805;
+    border: 1px solid #2a1f14;
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+.status-grid .label { color: #8a7048; font-size: 0.82rem; }
+.status-grid .value { color: #ffdc8a; font-weight: 600; margin-left: 6px; }
+#seconds-since-tone { font-variant-numeric: tabular-nums; }
+
+/* ===== ГИСТОГРАММА ===== */
+.tone-stats {
+    display: flex; gap: 24px; flex-wrap: wrap;
+    align-items: baseline; margin-bottom: 12px;
+    font-size: 0.9rem; color: #b89870;
+}
+.tone-stats b {
+    color: #ffdc8a; font-variant-numeric: tabular-nums;
+    font-size: 1.05rem;
+}
+.tone-stats .muted { color: #6a5438; font-size: 0.8rem; margin-left: auto; }
+#tone-canvas {
+    width: 100%; display: block; border-radius: 4px;
+    background: #000; border: 1px solid #2a1f14;
+}
+.tone-axis {
+    display: flex; justify-content: space-between;
+    font-size: 0.72rem; color: #6a5438;
+    padding: 6px 4px 0; font-variant-numeric: tabular-nums;
+}
+
+/* ===== КНОПКИ ===== */
+.buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn {
+    padding: 9px 20px;
+    border: 2px solid #0a0805;
+    border-radius: 5px;
+    font-family: "Courier New", monospace;
+    font-size: 0.88rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: all 0.1s;
+    text-transform: uppercase;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.15),
+        inset 0 -2px 0 rgba(0,0,0,0.4),
+        0 2px 4px rgba(0,0,0,0.5);
+}
+.btn:hover:not(:disabled) { transform: translateY(-1px); }
+.btn:active:not(:disabled) { transform: translateY(1px); box-shadow: inset 0 1px 4px rgba(0,0,0,0.6); }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.btn-start { background: linear-gradient(180deg, #3a7a3a, #1e4a1e); color: #d0ffd0; }
+.btn-stop { background: linear-gradient(180deg, #7a3a3a, #4a1e1e); color: #ffd0d0; }
+.btn-save { background: linear-gradient(180deg, #3a5a7a, #1e3a4a); color: #d0e8ff; }
+.btn-scan { background: linear-gradient(180deg, #5a3a7a, #3a1e4a); color: #e8d0ff; }
+.btn-add { background: linear-gradient(180deg, #7a6a3a, #4a3a1e); color: #ffe8b0; font-size: 0.82rem; padding: 7px 14px; }
+.btn-refresh {
+    background: linear-gradient(180deg, #4a3a2a, #2a1f14);
+    color: #d4a86a;
+    padding: 7px 12px; font-size: 0.82rem;
+    width: 100%; margin-top: 4px;
+}
+.btn-logout {
+    background: linear-gradient(180deg, #4a3a2a, #2a1f14);
+    color: #d4a86a;
+    padding: 6px 14px; font-size: 0.82rem;
+}
+
+/* ===== ФОРМЫ ===== */
+.form-row {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 16px; margin-bottom: 12px;
+}
+.form-row-3 { grid-template-columns: 1fr 1fr 1fr; }
+.form-row label {
+    font-size: 0.85rem; color: #8a7048;
+    font-family: "Courier New", monospace;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+.form-row input,
+.form-row select {
+    width: 100%;
+    padding: 8px 12px;
+    background: #0a0805;
+    color: #ffdc8a;
+    border: 1px solid #3a2818;
+    border-radius: 4px;
+    font-family: "Courier New", monospace;
+    font-size: 0.95rem;
+    margin-top: 4px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+.form-row input:focus,
+.form-row select:focus {
+    border-color: #d4a86a;
+    box-shadow: 0 0 0 2px rgba(212,168,106,0.15);
+}
+
+.checkbox-row {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 0.9rem; cursor: pointer; color: #b89870;
+    font-family: "Courier New", monospace;
+}
+.checkbox-row input { margin: 0; accent-color: #d4a86a; }
+input[type="time"], input[type="number"] { font-variant-numeric: tabular-nums; }
+
+/* ===== ИСТОЧНИКИ ===== */
+.source-options {
+    display: flex; flex-direction: column; gap: 8px;
+    margin-bottom: 14px;
+}
+.radio-row {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 0.9rem; cursor: pointer; color: #b89870;
+    font-family: "Courier New", monospace;
+}
+.radio-row input { accent-color: #d4a86a; }
+.source-block { margin-bottom: 8px; }
+
+/* ===== FALLBACK ===== */
+.fallback-block {
+    margin-top: 20px;
+    padding: 16px;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid #2a1f14;
+    border-radius: 6px;
+}
+.fallback-block h3 {
+    margin: 0 0 12px 0;
+    font-size: 0.9rem;
+    color: #d4a86a;
+    font-family: "Courier New", monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+.fallback-list {
+    display: flex; flex-direction: column; gap: 6px;
+    margin-top: 12px;
+}
+.fallback-item {
+    display: grid;
+    grid-template-columns: 1fr 2fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 12px;
+    background: #0a0805;
+    border: 1px solid #2a1f14;
+    border-radius: 4px;
+    font-size: 0.88rem;
+}
+.fallback-item .fb-name { color: #ffdc8a; font-weight: 600; }
+.fallback-item .fb-url {
+    color: #8a7048; font-family: "Courier New", monospace;
+    font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.fallback-item button {
+    padding: 4px 10px; font-size: 0.78rem;
+    background: linear-gradient(180deg, #7a3a3a, #4a1e1e);
+    color: #ffd0d0; border: 1px solid #0a0805; border-radius: 3px;
+    cursor: pointer;
+    font-family: "Courier New", monospace;
+}
+.fallback-empty {
+    text-align: center; color: #6a5438;
+    font-size: 0.85rem; padding: 12px;
+    font-family: "Courier New", monospace;
+}
+
+/* ===== ВЫХОД АУДИО ===== */
+.output-section {
+    padding: 14px 0;
+    border-bottom: 1px dashed #3a2818;
+}
+.output-section:last-of-type { border-bottom: none; padding-bottom: 4px; }
+.output-section h3 {
+    font-size: 0.85rem; color: #b89870;
+    margin: 0 0 10px 0; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    font-family: "Courier New", monospace;
+}
+.player-row {
+    display: flex; gap: 12px; align-items: center;
+    flex-wrap: wrap; margin-bottom: 12px;
+}
+.player-row audio { flex: 1; min-width: 240px; height: 36px; }
+.hint { font-size: 0.8rem; color: #6a5438; margin-top: 6px; }
+
+/* ===== ТАБЛИЦА ОБЪЯВЛЕНИЙ ===== */
+.upload-form {
+    padding-bottom: 16px;
+    border-bottom: 1px dashed #3a2818;
+    margin-bottom: 16px;
+}
+.upload-status { margin-left: 12px; font-size: 0.88rem; color: #b89870; }
+
+.ann-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.ann-table th,
+.ann-table td {
+    padding: 10px 8px; text-align: left;
+    border-bottom: 1px solid #2a1f14; vertical-align: top;
+}
+.ann-table th {
+    color: #8a7048; font-weight: 600;
+    font-size: 0.75rem; text-transform: uppercase;
+    letter-spacing: 0.1em; font-family: "Courier New", monospace;
+}
+.ann-table .empty { text-align: center; color: #5a4a32; padding: 24px; }
+.ann-table .icon { width: 24px; text-align: center; }
+.ann-table .fname { color: #ffdc8a; font-weight: 600; word-break: break-all; }
+.ann-table .fdesc { font-size: 0.82rem; color: #8a7048; margin-top: 2px; }
+.ann-table .fsize { font-size: 0.78rem; color: #5a4a32; }
+.ann-table .small { font-size: 0.82rem; color: #8a7048; }
+.ann-table .counter {
+    font-variant-numeric: tabular-nums;
+    color: #ffdc8a; font-weight: 700;
+    font-family: "Courier New", monospace;
+}
+.ann-table .actions { white-space: nowrap; }
+.ann-table tr.active-row { background: rgba(120,180,80,0.08); }
+
+.btn-sm {
+    padding: 5px 10px;
+    background: linear-gradient(180deg, #4a3a2a, #2a1f14);
+    color: #d4a86a;
+    border: 1px solid #0a0805;
+    border-radius: 3px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    margin-right: 5px;
+    font-family: "Courier New", monospace;
+    letter-spacing: 0.05em;
+}
+.btn-sm:hover:not(:disabled) { background: linear-gradient(180deg, #5a4a3a, #3a2f1e); }
+.btn-sm:disabled { opacity: 0.4; cursor: default; }
+
+/* ===== СКАН ===== */
+.scan-block {
+    padding: 14px 0 16px;
+    border-bottom: 1px dashed #3a2818;
+    margin-bottom: 16px;
+}
+.scan-block h3 {
+    font-size: 0.85rem; color: #b89870;
+    margin: 0 0 10px 0; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    font-family: "Courier New", monospace;
+}
+.scan-row {
+    display: flex; gap: 12px; align-items: center;
+    flex-wrap: wrap; margin-bottom: 12px;
+}
+.scan-results .empty {
+    text-align: center; color: #6a5438;
+    padding: 16px; font-size: 0.85rem;
+    font-family: "Courier New", monospace;
+}
+.scan-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.scan-table th {
+    text-align: left; color: #8a7048;
+    font-size: 0.72rem; text-transform: uppercase;
+    letter-spacing: 0.1em; padding: 6px 8px;
+    border-bottom: 1px solid #3a2818;
+    font-family: "Courier New", monospace;
+}
+.scan-table td { padding: 8px; border-bottom: 1px solid #1f1610; }
+.scan-table .mono {
+    font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, monospace;
+    color: #ffdc8a;
+}
+.scan-table tr.good { background: rgba(80,180,80,0.08); }
+.scan-table tr.mid { background: rgba(180,160,60,0.08); }
+.scan-table tr.weak { opacity: 0.7; }
+.btn-apply-tone {
+    background: linear-gradient(180deg, #3a5a7a, #1e3a4a);
+    color: #d0e8ff;
+    border: 1px solid #0a0805;
+    padding: 4px 10px; font-size: 0.78rem;
+    border-radius: 3px; cursor: pointer;
+    font-family: "Courier New", monospace;
+}
+
+/* ===== МОБИЛЬНАЯ АДАПТАЦИЯ ===== */
+@media (max-width: 1100px) {
+    .console-wrap { grid-template-columns: 1fr; }
+    .speaker { display: none; }
+    .console-main { padding: 16px; }
+    .meters-row { grid-template-columns: 1fr 1fr; }
+    .lamps-column { grid-column: 1 / -1; flex-direction: row; }
+    .lamp-item { flex: 1; min-width: 0; }
+    .status-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 720px) {
+    .form-row, .form-row-3 { grid-template-columns: 1fr; }
+    .meters-row { grid-template-columns: 1fr; }
+    .status-grid { grid-template-columns: 1fr; }
+    .topbar h1 { font-size: 1.1rem; }
+}

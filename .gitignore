@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Пользовательские данные (НЕ коммитить!)
+assets/announcements.json
+assets/announcements/
+assets/settings.json
+assets/*.wav
+assets/*.mp3
+output.raw
+
+# Логи
+*.log
+logs/
+
+# Временные
+*.tmp
+*.bak

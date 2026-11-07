@@ -1,0 +1,8 @@
+flask>=3.0
+sounddevice>=0.4
+numpy>=1.24
+scipy>=1.10
+pydub>=0.25
+requests>=2.31
+psutil>=5.9
+pjsua2-wheel>=2.14 ; sys_platform == "win32"

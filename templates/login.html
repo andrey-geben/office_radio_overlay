@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Вход — Office Radio Overlay</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="login-wrap">
+    <form method="post" class="login-card">
+        <h1>📻 Office Radio Overlay</h1>
+        <p class="login-sub">Вход в панель управления</p>
+        {% if error %}<div class="login-error">{{ error }}</div>{% endif %}
+        <label>Логин
+            <input type="text" name="username" autofocus required>
+        </label>
+        <label>Пароль
+            <input type="password" name="password" required>
+        </label>
+        <button type="submit" class="btn btn-save">Войти</button>
+    </form>
+</div>
+</body>
+</html>

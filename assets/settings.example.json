@@ -1,0 +1,30 @@
+{
+  "source_type": "stream",
+  "radio_url": "https://ice5.somafm.com/vaporwaves-128-mp3",
+  "input_device": null,
+  "tone_freq": 131.8,
+  "detection_threshold": 0.1,
+  "dcs_freq": 100.0,
+  "dcs_threshold": 0.1,
+  "ducking_level": 0.2,
+  "announcement_level": 1.0,
+  "fade_out_ms": 500,
+  "fade_in_ms": 800,
+  "hw_output_device": null,
+  "tone_timeout_enabled": false,
+  "tone_timeout_seconds": 600,
+  "active_announcement_id": null,
+  "fallback_enabled": true,
+  "fallback_timeout_seconds": 10,
+  "fallback_retry_main_seconds": 60,
+  "fallback_sources": [
+    { "name": "Резерв 1", "url": "https://ice5.somafm.com/groovesalad-128-mp3" }
+  ],
+  "sip_domain": "",
+  "sip_username": "",
+  "sip_password": "",
+  "sip_port": 5060,
+  "sip_transport": "udp",
+  "auto_start_engine": false,
+  "auto_start_sip": false
+}

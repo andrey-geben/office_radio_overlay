@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Office Radio Overlay</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="console-wrap">
+    <aside class="speaker speaker-left">
+        <div class="speaker-grille"></div>
+        <div class="speaker-badge">LSO-1</div>
+    </aside>
+
+    <main class="console-main">
+        <header class="topbar">
+            <h1>📻 OFFICE RADIO OVERLAY</h1>
+            <div class="user-block">
+                <span class="user-name">👤 {{ username }}</span>
+                <form method="post" action="/logout" class="inline-form">
+                    <button type="submit" class="btn btn-logout">Выйти</button>
+                </form>
+            </div>
+        </header>
+
+        <!-- СТАТУС -->
+        <div class="card">
+            <h2>Статус</h2>
+
+            <div class="meters-row">
+                <div class="meter-box">
+                    <div class="meter-label">SIGNAL</div>
+                    <svg viewBox="0 0 100 60" class="meter">
+                        <path d="M10,52 A40,40 0 0,1 90,52" fill="none" stroke="#3a3024" stroke-width="1.5"/>
+                        <line id="needle-signal" x1="50" y1="52" x2="50" y2="18"
+                              stroke="#c81e1e" stroke-width="1.6" stroke-linecap="round"
+                              transform="rotate(-90 50 52)"/>
+                        <circle cx="50" cy="52" r="2.5" fill="#1f1813"/>
+                    </svg>
+                    <div class="meter-value"><span id="signal-db">-90.0</span><small>dBFS</small></div>
+                </div>
+
+                <div class="meter-box">
+                    <div class="meter-label">CPU</div>
+                    <svg viewBox="0 0 100 60" class="meter">
+                        <path d="M10,52 A40,40 0 0,1 90,52" fill="none" stroke="#3a3024" stroke-width="1.5"/>
+                        <line id="needle-cpu" x1="50" y1="52" x2="50" y2="18"
+                              stroke="#c81e1e" stroke-width="1.6" stroke-linecap="round"
+                              transform="rotate(-90 50 52)"/>
+                        <circle cx="50" cy="52" r="2.5" fill="#1f1813"/>
+                    </svg>
+                    <div class="meter-value"><span id="cpu-val">0</span><small>%</small></div>
+                </div>
+
+                <div class="meter-box">
+                    <div class="meter-label">NET</div>
+                    <svg viewBox="0 0 100 60" class="meter">
+                        <path d="M10,52 A40,40 0 0,1 90,52" fill="none" stroke="#3a3024" stroke-width="1.5"/>
+                        <line id="needle-net" x1="50" y1="52" x2="50" y2="18"
+                              stroke="#c81e1e" stroke-width="1.6" stroke-linecap="round"
+                              transform="rotate(-90 50 52)"/>
+                        <circle cx="50" cy="52" r="2.5" fill="#1f1813"/>
+                    </svg>
+                    <div class="meter-value"><span id="net-val">0</span><small>KB/s</small></div>
+                </div>
+
+                <div class="lamps-column">
+                    <div class="lamp-item" id="ind-ctcss">
+                        <div class="led"></div>
+                        <div class="lamp-label">CTCSS</div>
+                        <div class="lamp-power" id="ind-ctcss-p">0.000</div>
+                    </div>
+                    <div class="lamp-item lamp-dcs" id="ind-dcs">
+                        <div class="led"></div>
+                        <div class="lamp-label">DCS</div>
+                        <div class="lamp-power" id="ind-dcs-p">0.000</div>
+                    </div>
+                    <div class="lamp-item lamp-onair" id="ind-onair">
+                        <div class="led"></div>
+                        <div class="lamp-label">ON AIR</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="equalizer-wrap">
+                <div class="eq-label">SPECTRUM</div>
+                <canvas id="eq-canvas" class="eq-canvas"></canvas>
+            </div>
+
+            <div class="status-grid">
+                <div><span class="label">Движок:</span><span id="running" class="value">—</span></div>
+                <div><span class="label">Источник:</span><span id="current-source" class="value">—</span></div>
+                <div><span class="label">Объявлений:</span><span id="count" class="value">—</span></div>
+                <div><span class="label">Сейчас:</span><span id="onair-text" class="value">—</span></div>
+                <div><span class="label">Без тона, сек:</span><span id="seconds-since-tone" class="value">0</span></div>
+                <div><span class="label">Событие:</span><span id="event" class="value">—</span></div>
+                <div style="grid-column: 1 / -1"><span class="label">Ошибка:</span><span id="error" class="value">—</span></div>
+            </div>
+
+            <div class="buttons">
+                <button id="btn-start" class="btn btn-start">▶ Запустить</button>
+                <button id="btn-stop" class="btn btn-stop">■ Остановить</button>
+            </div>
+
+            <label class="checkbox-row" style="margin-top:12px;">
+                <input type="checkbox" id="auto_start_engine">
+                Автозапускать движок при старте сервера
+            </label>
+        </div>
+
+        <!-- ГИСТОГРАММА -->
+        <div class="card">
+            <h2>Сработки субтонов</h2>
+            <div class="tone-stats">
+                <div>CTCSS: <b id="th-ctcss-total">0</b></div>
+                <div>DCS: <b id="th-dcs-total">0</b></div>
+                <div class="muted">окно 5 мин · шаг 5 сек</div>
+            </div>
+            <canvas id="tone-canvas" height="100"></canvas>
+            <div class="tone-axis">
+                <span>-5 мин</span><span>-4</span><span>-3</span><span>-2</span><span>-1</span><span>сейчас</span>
+            </div>
+        </div>
+
+        <!-- ИСТОЧНИК + FALLBACK -->
+        <div class="card">
+            <h2>Источник сигнала</h2>
+            <div class="source-options">
+                <label class="radio-row"><input type="radio" name="source_type" value="stream"> Интернет-поток</label>
+                <label class="radio-row"><input type="radio" name="source_type" value="device"> Устройство захвата</label>
+            </div>
+            <div id="source-stream" class="source-block">
+                <div class="form-row">
+                    <label>URL потока <input type="text" id="source-url"></label>
+                </div>
+            </div>
+            <div id="source-device" class="source-block">
+                <div class="form-row">
+                    <label>Устройство ввода
+                        <select id="source-device-select"><option value="">По умолчанию</option></select>
+                    </label>
+                    <label>&nbsp;<button type="button" id="btn-refresh-devices" class="btn btn-refresh">🔄 Обновить</button></label>
+                </div>
+            </div>
+
+            <div class="fallback-block">
+                <h3>🔁 Резервные каналы (fallback)</h3>
+                <label class="checkbox-row">
+                    <input type="checkbox" id="fallback_enabled">
+                    Включать резервный поток, если основной не отвечает
+                </label>
+                <div class="form-row">
+                    <label>Таймаут, сек
+                        <input type="number" step="1" min="3" name="fallback_timeout_seconds" id="fallback_timeout_seconds">
+                    </label>
+                    <label>Проверять основной раз в, сек
+                        <input type="number" step="5" min="10" name="fallback_retry_main_seconds" id="fallback_retry_main_seconds">
+                    </label>
+                </div>
+                <div id="fallback-list" class="fallback-list"></div>
+                <div class="form-row" style="margin-top:8px;">
+                    <label>Название <input type="text" id="new-fallback-name" placeholder="Резерв 1"></label>
+                    <label>URL <input type="text" id="new-fallback-url" placeholder="https://..."></label>
+                </div>
+                <button type="button" id="btn-add-fallback" class="btn btn-add">➕ Добавить резерв</button>
+            </div>
+
+            <button type="button" id="btn-apply-source" class="btn btn-save" style="margin-top:12px;">✅ Применить источник</button>
+            <span id="source-status" class="upload-status"></span>
+        </div>
+
+        <!-- ВЫХОД АУДИО -->
+        <div class="card">
+            <h2>Выход аудио</h2>
+            <div class="output-section">
+                <h3>Веб-плеер (этот браузер)</h3>
+                <div class="player-row">
+                    <button type="button" id="btn-stream-connect" class="btn btn-start">▶ Подключить</button>
+                    <audio id="player" controls></audio>
+                </div>
+                <div class="form-row">
+                    <label>Устройство вывода
+                        <select id="sink-select"><option value="">По умолчанию</option></select>
+                    </label>
+                    <label>&nbsp;<button type="button" id="btn-refresh-sinks" class="btn btn-refresh">🔄 Обновить</button></label>
+                </div>
+            </div>
+            <div class="output-section">
+                <h3>Аппаратный выход (на сервере)</h3>
+                <div class="form-row">
+                    <label>Устройство
+                        <select id="hw-output-select"><option value="">Отключён</option></select>
+                    </label>
+                    <label>&nbsp;<button type="button" id="btn-refresh-hw-outputs" class="btn btn-refresh">🔄 Обновить</button></label>
+                </div>
+                <button type="button" id="btn-apply-hw-output" class="btn btn-save">✅ Применить</button>
+            </div>
+            <span id="output-status" class="upload-status"></span>
+        </div>
+
+        <!-- ОБЪЯВЛЕНИЯ -->
+        <div class="card">
+            <h2>Служебные объявления</h2>
+            <form id="upload-form" class="upload-form">
+                <div class="form-row">
+                    <label>Файл <input type="file" name="file" accept=".wav,.mp3,.ogg,.flac,.m4a" required></label>
+                    <label>Описание <input type="text" name="description" placeholder="Обед с 13:00"></label>
+                </div>
+                <div class="form-row form-row-3">
+                    <label>С (HH:MM) <input type="time" name="start_time"></label>
+                    <label>До (HH:MM) <input type="time" name="end_time"></label>
+                    <label>Повторов/день <input type="number" name="repeat_limit" min="0" value="0"></label>
+                </div>
+                <button type="submit" class="btn btn-save">⬆ Загрузить</button>
+                <span id="upload-status" class="upload-status"></span>
+            </form>
+            <table class="ann-table">
+                <thead><tr>
+                    <th></th><th>Файл / описание</th><th>Расписание</th>
+                    <th>Сегодня</th><th>Всего</th><th>Последний</th><th>Действия</th>
+                </tr></thead>
+                <tbody id="ann-tbody">
+                    <tr><td colspan="7" class="empty">Загрузок пока нет</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- НАСТРОЙКИ ДЕТЕКТОРОВ -->
+        <div class="card">
+            <h2>Настройки детекторов</h2>
+            <div class="scan-block">
+                <h3>🔍 Анализ субтонов</h3>
+                <div class="scan-row">
+                    <button type="button" id="btn-scan-tone" class="btn btn-scan">🔍 Сканировать (3 сек)</button>
+                    <span id="scan-status" class="upload-status"></span>
+                </div>
+                <div id="scan-results" class="scan-results"></div>
+            </div>
+            <form id="settings-form">
+                <div class="form-row">
+                    <label>CTCSS Гц <input type="number" step="0.1" name="tone_freq" id="tone_freq"></label>
+                    <label>CTCSS порог <input type="number" step="0.001" name="detection_threshold" id="detection_threshold"></label>
+                </div>
+                <div class="form-row">
+                    <label>DCS Гц <input type="number" step="0.1" name="dcs_freq" id="dcs_freq"></label>
+                    <label>DCS порог <input type="number" step="0.001" name="dcs_threshold" id="dcs_threshold"></label>
+                </div>
+                <div class="form-row">
+                    <label>Ducking <input type="number" step="0.05" name="ducking_level" id="ducking_level"></label>
+                    <label>Громкость объявления <input type="number" step="0.05" name="announcement_level" id="announcement_level"></label>
+                </div>
+                <div class="form-row">
+                    <label>Затухание, мс <input type="number" step="50" min="0" name="fade_out_ms" id="fade_out_ms"></label>
+                    <label>Нарастание, мс <input type="number" step="50" min="0" name="fade_in_ms" id="fade_in_ms"></label>
+                </div>
+                <div class="form-row">
+                    <label>Таймаут без тона, сек
+                        <input type="number" step="30" min="0" name="tone_timeout_seconds" id="tone_timeout_seconds">
+                    </label>
+                    <label class="checkbox-row" style="align-self:end; margin-bottom:8px;">
+                        <input type="checkbox" name="tone_timeout_enabled" id="tone_timeout_enabled">
+                        Вставлять по таймауту
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-save">💾 Сохранить</button>
+            </form>
+        </div>
+
+        <!-- SIP -->
+        <div class="card">
+            <h2>SIP / ЛСО</h2>
+            <div class="form-row">
+                <label>SIP-домен <input type="text" id="sip_domain" placeholder="sip.example.com"></label>
+                <label>Логин <input type="text" id="sip_username" placeholder="office_radio"></label>
+            </div>
+            <div class="form-row">
+                <label>Пароль <input type="password" id="sip_password" placeholder="Введите пароль"></label>
+                <label>Порт <input type="number" id="sip_port" value="5060" min="1" max="65535"></label>
+            </div>
+            <div class="form-row">
+                <label>Транспорт
+                    <select id="sip_transport"><option value="udp">UDP</option><option value="tcp">TCP</option></select>
+                </label>
+                <label class="checkbox-row" style="align-self:end; margin-bottom:8px;">
+                    <input type="checkbox" id="auto_start_sip">
+                    Автозапускать SIP
+                </label>
+            </div>
+            <div class="buttons">
+                <button type="button" id="btn-sip-save" class="btn btn-save">💾 Сохранить</button>
+                <button type="button" id="btn-sip-start" class="btn btn-start">▶ Подключить</button>
+                <button type="button" id="btn-sip-stop" class="btn btn-stop">■ Отключить</button>
+            </div>
+            <div class="status-grid" style="margin-top:16px;">
+                <div><span class="label">Статус SIP:</span><span id="sip-status" class="value">—</span></div>
+                <div><span class="label">Режим звонка:</span><span id="sip-engine" class="value">—</span></div>
+            </div>
+            <span id="sip-message" class="upload-status"></span>
+        </div>
+
+        <!-- ТЕСТИРОВАНИЕ -->
+        <div class="card">
+            <h2>Тестирование</h2>
+            <label class="checkbox-row">
+                <input type="checkbox" id="simulate">
+                Симулировать управляющий тон
+            </label>
+        </div>
+    </main>
+
+    <aside class="speaker speaker-right">
+        <div class="speaker-grille"></div>
+        <div class="speaker-badge">LSO-1</div>
+    </aside>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>
