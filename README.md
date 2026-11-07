@@ -426,3 +426,4 @@ MIT — см. [LICENSE](LICENSE). Используйте свободно, в т
 ---
 
 **Вопросы, идеи, баги** — открывайте [issue](https://github.com/andrey-geben/office_radio_overlay/issues).
+> 📦 **Готовый `.exe` для Windows:** [скачать последний релиз](https://github.com/andrey-geben/office_radio_overlay/releases/latest)
