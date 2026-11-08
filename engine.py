@@ -1,4 +1,5 @@
 # engine.py
+#БЛОК 1 — заголовок и импорты
 import threading
 import time
 import math
@@ -11,6 +12,7 @@ import psutil
 import audio_capture
 from audio_capture import stream_audio, stream_audio_chunks
 from tone_detector import detect_all, scan_ctcss_frequencies
+from dtmf_detector import DTMFDetector
 from mixer import load_announcement
 from audio_output import HardwareOutput
 import announcement_store
@@ -19,9 +21,9 @@ import config
 
 logger = logging.getLogger(__name__)
 
-SPECTRUM_BANDS = 16
+SPECTRUM_BANDS = 24
 
-
+#Блок2 функция _apply_envelope (fade-in/out)
 def _apply_envelope(radio_chunk, ann_chunk, pos_samples, total_samples,
                     fade_out_samples, fade_in_samples, ducking):
     radio = np.frombuffer(radio_chunk, dtype=np.int16).astype(np.float32)
@@ -60,18 +62,17 @@ def _apply_envelope(radio_chunk, ann_chunk, pos_samples, total_samples,
     mixed = np.clip(mixed, -32768, 32767)
     return mixed.astype(np.int16).tobytes()
 
-
+#БЛОК 3 — класс RadioOverlayEngine, __init__
 class RadioOverlayEngine:
     def __init__(self):
         self._thread = None
         self._stop_event = threading.Event()
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
         self._last_play_time = 0.0
         self._ann_active = False
         self._ann_pos = 0
 
-        # Сейчас играющее объявление (может быть любым по расписанию)
         self._playing_data = None
         self._playing_id = None
         self._playing_name = None
@@ -87,6 +88,7 @@ class RadioOverlayEngine:
         self._session_start = 0.0
 
         self._last_activity_time = time.time()
+        self._last_event_time = 0.0
 
         self._stats_last = 0.0
         self._net_last_bytes = 0
@@ -100,6 +102,16 @@ class RadioOverlayEngine:
         self._scan_buffer_max = int(config.SAMPLE_RATE * 3)
 
         self._hw_output = HardwareOutput()
+
+        # --- DTMF ---
+        self._dtmf = DTMFDetector(
+            sample_rate=config.SAMPLE_RATE,
+            min_digit_ms=config.DTMF_MIN_DIGIT_MS,
+        )
+        self._dtmf_sequence = ""
+        self._dtmf_last_digit = ""
+        self._dtmf_last_digit_time = 0.0
+        self._dtmf_last_match = ""
 
         saved = settings_store.load()
 
@@ -125,6 +137,9 @@ class RadioOverlayEngine:
             "using_reserve": False,
             "playing_name": None,
             "playing_id": None,
+            "last_dtmf_digit": "",
+            "dtmf_sequence": "",
+            "dtmf_last_match": "",
         }
 
         self._settings = {
@@ -148,15 +163,17 @@ class RadioOverlayEngine:
             "fallback_timeout_seconds": saved.get("fallback_timeout_seconds", config.FALLBACK_TIMEOUT_SECONDS),
             "fallback_retry_main_seconds": saved.get("fallback_retry_main_seconds", config.FALLBACK_RETRY_MAIN_SECONDS),
             "fallback_sources": saved.get("fallback_sources", []),
+            "dtmf_labels": saved.get("dtmf_labels", config.DTMF_DEFAULT_LABELS),
         }
 
+#БЛОК 4 — SIP, публичное API, настройки, DTMF, сканер
     # --- SIP ---
     def enter_sip_mode(self, sip_call=None):
         with self._lock:
             self._sip_active = True
             self._sip_call = sip_call
             self._state["sip_active"] = True
-        self._update_state(last_event="📞 SIP-звонок в эфире")
+        self._set_event("📞 SIP-звонок в эфире", force=True)
         logger.info("Режим SIP включён.")
 
     def exit_sip_mode(self):
@@ -164,7 +181,7 @@ class RadioOverlayEngine:
             self._sip_active = False
             self._sip_call = None
             self._state["sip_active"] = False
-        self._update_state(last_event="streaming")
+        self._set_event("streaming", force=True)
         logger.info("Режим SIP выключен.")
 
     def is_sip_active(self):
@@ -197,19 +214,21 @@ class RadioOverlayEngine:
             was_timeout_enabled = self._settings.get("tone_timeout_enabled", False)
             self._settings.update(kwargs)
             now_timeout_enabled = self._settings.get("tone_timeout_enabled", False)
+            to_save = {k: v for k, v in kwargs.items()
+                       if k in self._settings and k != "simulate_tone"}
+            snapshot = dict(self._settings)
 
         if now_timeout_enabled and not was_timeout_enabled:
             with self._lock:
                 self._last_activity_time = time.time()
 
-        to_save = {k: v for k, v in kwargs.items() if k in self._settings and k != "simulate_tone"}
         if to_save:
             try:
                 settings_store.update(**to_save)
             except Exception as e:
                 logger.warning(f"Не удалось сохранить настройки: {e}")
 
-        return self.get_settings()
+        return snapshot
 
     def set_fallback_sources(self, sources):
         if not isinstance(sources, list):
@@ -230,6 +249,22 @@ class RadioOverlayEngine:
         except Exception:
             pass
         return True
+
+    def set_dtmf_labels(self, labels):
+        cleaned = []
+        for label in labels:
+            if not isinstance(label, str):
+                continue
+            s = label.strip().upper()
+            if 2 <= len(s) <= 10 and all(c in "0123456789*#ABCD" for c in s):
+                cleaned.append(s)
+        with self._lock:
+            self._settings["dtmf_labels"] = cleaned
+        try:
+            settings_store.update(dtmf_labels=cleaned)
+        except Exception:
+            pass
+        return cleaned
 
     def get_output_chunk(self, timeout=1.0):
         try:
@@ -280,7 +315,6 @@ class RadioOverlayEngine:
             "candidates": candidates,
         }
 
-    # --- Загрузка PCM «приоритетного» объявления (для превью / совместимости) ---
     def reload_announcement(self):
         with self._lock:
             ann_id = self._settings.get("active_announcement_id")
@@ -295,6 +329,8 @@ class RadioOverlayEngine:
             logger.exception("Не удалось загрузить %s", path)
             return False
         return True
+
+#БЛОК 5 — start/stop, _update_state, _set_event, _level
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -312,8 +348,14 @@ class RadioOverlayEngine:
             self._prev_dcs = False
             self._session_start = time.time()
             self._last_activity_time = time.time()
+            self._last_event_time = 0.0
             self._scan_buffer.clear()
             self._scan_buffer_size = 0
+            self._dtmf_sequence = ""
+            self._dtmf_last_digit = ""
+            self._dtmf_last_match = ""
+            self._dtmf_last_digit_time = 0.0
+            self._dtmf.reset()
             hw_dev = self._settings.get("hw_output_device")
 
         if hw_dev is not None and not self._hw_output.is_running():
@@ -336,13 +378,25 @@ class RadioOverlayEngine:
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=5)
-        self._update_state(running=False, last_event="stopped", announcement_active=False,
-                           playing_name=None, playing_id=None)
+        with self._lock:
+            self._state["running"] = False
+            self._state["announcement_active"] = False
+            self._state["playing_name"] = None
+            self._state["playing_id"] = None
+        self._set_event("stopped", force=True)
 
     # --- Внутреннее ---
     def _update_state(self, **kwargs):
         with self._lock:
             self._state.update(kwargs)
+
+    def _set_event(self, text, force=False, min_interval=3.0):
+        now = time.time()
+        with self._lock:
+            if not force and now - self._last_event_time < min_interval:
+                return
+            self._state["last_event"] = text
+            self._last_event_time = now
 
     @staticmethod
     def _level(chunk):
@@ -375,29 +429,49 @@ class RadioOverlayEngine:
                 buckets[idx][kind] += 1
         return {"window_s": window_s, "bucket_s": bucket_s, "buckets": buckets}
 
+#БЛОК 6 — спектр, scan buffer, _push_output, _pick_announcement
     @staticmethod
-    def _compute_spectrum(chunk):
+    def _compute_spectrum(chunk, prev_spectrum=None):
         try:
             samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32)
             if len(samples) < 512:
                 return [0.0] * SPECTRUM_BANDS
-            n_fft = 1024
-            if len(samples) > n_fft:
-                samples = samples[-n_fft:]
-            window = np.hanning(len(samples))
+            n_fft = len(samples)
+            window = np.hanning(n_fft)
             fft = np.fft.rfft(samples * window)
             mag = np.abs(fft)
-            total = len(mag)
+            sr = config.SAMPLE_RATE
+            nyquist = sr / 2.0
+            freqs = np.fft.rfftfreq(n_fft, 1.0 / sr)
+            f_min = 40.0
+            f_max = min(nyquist, 16000.0)
+            if f_max <= f_min:
+                return [0.0] * SPECTRUM_BANDS
+            log_ratio = np.log(f_max / f_min)
             bands = []
             for i in range(SPECTRUM_BANDS):
-                start = int(total * (i / SPECTRUM_BANDS) ** 1.4)
-                end = int(total * ((i + 1) / SPECTRUM_BANDS) ** 1.4)
-                if end <= start:
-                    end = start + 1
-                bands.append(float(np.mean(mag[start:end])))
+                f_lo = f_min * np.exp(log_ratio * i / SPECTRUM_BANDS)
+                f_hi = f_min * np.exp(log_ratio * (i + 1) / SPECTRUM_BANDS)
+                idx_lo = int(np.searchsorted(freqs, f_lo, side="left"))
+                idx_hi = int(np.searchsorted(freqs, f_hi, side="right"))
+                if idx_hi <= idx_lo:
+                    idx_hi = min(idx_lo + 1, len(mag))
+                band_mag = float(np.mean(mag[idx_lo:idx_hi])) if idx_hi > idx_lo else 0.0
+                tilt = 1.0 + (i / SPECTRUM_BANDS) * 4.0
+                bands.append(band_mag * tilt)
             mx = max(bands) if max(bands) > 0 else 1.0
-            return [b / mx for b in bands]
-        except Exception:
+            norm = [b / mx for b in bands]
+            if prev_spectrum and len(prev_spectrum) == len(norm):
+                result = []
+                for p, n in zip(prev_spectrum, norm):
+                    if n > p:
+                        result.append(n)
+                    else:
+                        result.append(p * 0.82 + n * 0.18)
+                norm = result
+            return norm
+        except Exception as e:
+            logger.debug(f"spectrum error: {e}")
             return [0.0] * SPECTRUM_BANDS
 
     def _update_spectrum(self, chunk):
@@ -405,7 +479,10 @@ class RadioOverlayEngine:
         if now - self._spectrum_last < 0.08:
             return
         self._spectrum_last = now
-        self._update_state(spectrum=self._compute_spectrum(chunk))
+        with self._lock:
+            prev = list(self._state.get("spectrum") or [])
+        spec = self._compute_spectrum(chunk, prev)
+        self._update_state(spectrum=spec)
 
     def _update_scan_buffer(self, chunk):
         try:
@@ -438,38 +515,68 @@ class RadioOverlayEngine:
         if self._hw_output.is_running():
             self._hw_output.push(chunk)
 
-    # --- Ключевой метод: выбор объявления по расписанию ---
     def _pick_announcement_for_trigger(self):
-        """
-        Возвращает id объявления, которое нужно проиграть сейчас, или None.
-        Логика:
-          1. Все объявления с корректным расписанием и неисчерпанным лимитом.
-          2. Если задан active_announcement_id и он в этом списке — берём его (приоритет).
-          3. Иначе — ротация: тот, кто дольше всех не играл (или ещё ни разу).
-        """
         items = announcement_store.list_announcements()
         playable = []
         for it in items:
             ok, _reason = announcement_store.check_playable(it)
             if ok:
                 playable.append(it)
-
         if not playable:
             return None
-
         with self._lock:
             active_id = self._settings.get("active_announcement_id")
-
         if active_id:
             for it in playable:
                 if it["id"] == active_id:
                     return active_id
-
-        # Ротация: самый старый last_played — первым (пустой = никогда не играл)
         playable.sort(key=lambda it: it.get("last_played") or "")
         return playable[0]["id"]
 
-    def _handle_trigger(self, from_timeout=False):
+#БЛОК 7 — триггеры (тон, таймаут, DTMF), playback, perf
+    def _handle_dtmf_digits(self, digits):
+        now = time.time()
+        with self._lock:
+            if now - self._dtmf_last_digit_time > config.DTMF_SEQUENCE_TIMEOUT_SECONDS:
+                self._dtmf_sequence = ""
+            for d in digits:
+                self._dtmf_sequence += d
+                self._dtmf_last_digit = d
+                self._dtmf_last_digit_time = now
+            if len(self._dtmf_sequence) > 20:
+                self._dtmf_sequence = self._dtmf_sequence[-20:]
+            seq = self._dtmf_sequence
+            labels = list(self._settings.get("dtmf_labels", []))
+
+        self._update_state(last_dtmf_digit=self._dtmf_last_digit, dtmf_sequence=seq)
+
+        matched = None
+        for label in sorted(labels, key=len, reverse=True):
+            if label and seq.endswith(label):
+                matched = label
+                break
+
+        if matched:
+            with self._lock:
+                self._dtmf_sequence = ""
+                self._dtmf_last_match = matched
+            self._update_state(dtmf_sequence="", dtmf_last_match=matched)
+            logger.info(f"[DTMF] Обнаружена метка '{matched}'")
+            self._handle_trigger(dtmf_label=matched)
+
+    def _check_dtmf_timeout(self):
+        need_clear = False
+        with self._lock:
+            if self._dtmf_sequence and (time.time() - self._dtmf_last_digit_time) > config.DTMF_SEQUENCE_TIMEOUT_SECONDS:
+                self._dtmf_sequence = ""
+                need_clear = True
+        if need_clear:
+            self._update_state(dtmf_sequence="")
+
+    def trigger_dtmf_test(self, label):
+        return self._handle_trigger(dtmf_label=f"test:{label}")
+
+    def _handle_trigger(self, from_timeout=False, dtmf_label=None):
         now = time.time()
         with self._lock:
             if now - self._last_play_time < config.MIN_ANNOUNCE_INTERVAL:
@@ -477,21 +584,23 @@ class RadioOverlayEngine:
 
         ann_id = self._pick_announcement_for_trigger()
         if not ann_id:
-            if not from_timeout:
-                self._update_state(last_event="⏸ все объявления на паузе (расписание / лимит / интервал)")
+            if dtmf_label:
+                self._set_event(f"📟 DTMF {dtmf_label} — нет объявления в окне", force=True)
+            elif not from_timeout:
+                self._set_event("⏸ все объявления на паузе (расписание / лимит / интервал)", force=True)
             return False
 
         path = announcement_store.get_path(ann_id)
         if not path:
-            self._update_state(last_event="объявление удалено",
-                               error=f"Файл объявления {ann_id} не найден")
+            self._set_event("объявление удалено", force=True)
+            self._update_state(error=f"Файл объявления {ann_id} не найден")
             return False
 
         try:
             data = load_announcement(path=path)
         except Exception:
             logger.exception("Не удалось загрузить %s", path)
-            self._update_state(last_event="ошибка загрузки объявления")
+            self._set_event("ошибка загрузки объявления", force=True)
             return False
 
         meta = announcement_store.get_announcement(ann_id)
@@ -512,10 +621,12 @@ class RadioOverlayEngine:
 
         announcement_store.increment_play(ann_id)
 
-        if from_timeout:
-            self._update_state(last_event=f"⏰ {name} (по таймауту)")
+        if dtmf_label:
+            self._set_event(f"📟 {name} (DTMF {dtmf_label})", force=True)
+        elif from_timeout:
+            self._set_event(f"⏰ {name} (по таймауту)", force=True)
         else:
-            self._update_state(last_event=f"🔔 {name} в эфире")
+            self._set_event(f"🔔 {name} в эфире", force=True)
         return True
 
     def _check_timeout_trigger(self, settings):
@@ -555,7 +666,6 @@ class RadioOverlayEngine:
         s = self.get_settings()
         fade_out_s = int(s["fade_out_ms"] * config.SAMPLE_RATE / 1000)
         fade_in_s = int(s["fade_in_ms"] * config.SAMPLE_RATE / 1000)
-
         pos_samples = pos // 2
         total_samples = len(ann_data) // 2
 
@@ -567,8 +677,6 @@ class RadioOverlayEngine:
             self._ann_pos = pos + take
         if self._ann_pos >= len(ann_data):
             self._finish_announcement()
-        else:
-            self._update_state(last_event=f"🔔 {self._playing_name or 'объявление'} в эфире")
         return mixed
 
     def _finish_announcement(self):
@@ -578,8 +686,9 @@ class RadioOverlayEngine:
             self._playing_data = None
             self._playing_id = None
             self._playing_name = None
-        self._update_state(announcement_active=False, last_event="streaming",
+        self._update_state(announcement_active=False,
                            playing_name=None, playing_id=None)
+        self._set_event("streaming", force=True)
 
     def _update_perf(self, source_type):
         now = time.time()
@@ -597,9 +706,9 @@ class RadioOverlayEngine:
             self._net_last_time = now
         self._update_state(cpu_percent=round(cpu, 1), network_bps=net_bps)
 
+ #БЛОК 8 — _stream_manager (fallback) и _run (главный цикл)
     def _stream_manager(self):
         s = self.get_settings()
-
         if s["source_type"] == "device":
             self._update_state(current_source="Устройство", using_reserve=False)
             try:
@@ -663,10 +772,8 @@ class RadioOverlayEngine:
                     idx = 0
                     time.sleep(2)
                 continue
-
             if self._stop_event.is_set():
                 break
-
             if not src["is_main"]:
                 idx = 0
                 last_try_main = time.time()
@@ -676,7 +783,8 @@ class RadioOverlayEngine:
                 time.sleep(1)
 
     def _run(self):
-        self._update_state(running=True, last_event="starting", error=None)
+        self._update_state(running=True, error=None)
+        self._set_event("starting", force=True)
         self._net_last_bytes = audio_capture.get_bytes_received()
         self._net_last_time = time.time()
 
@@ -721,6 +829,12 @@ class RadioOverlayEngine:
                     dcs_power=round(tones["dcs"]["power"], 4),
                 )
 
+                dtmf_digits = self._dtmf.feed(chunk)
+                if dtmf_digits:
+                    self._handle_dtmf_digits(dtmf_digits)
+                else:
+                    self._check_dtmf_timeout()
+
                 if self._ann_active:
                     mixed = self._play_chunk(chunk)
                     self._push_output(mixed if mixed is not None else chunk)
@@ -731,7 +845,7 @@ class RadioOverlayEngine:
                 else:
                     self._check_timeout_trigger(s)
                     if not self._ann_active:
-                        self._update_state(last_event="streaming")
+                        self._set_event("streaming")
 
                 self._push_output(chunk)
                 time.sleep(0.005)

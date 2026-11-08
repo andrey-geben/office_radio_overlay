@@ -181,7 +181,17 @@ function renderStatus(state, settings) {
     $('event').textContent = state.last_event || '—';
     $('error').textContent = state.error || '—';
     $('seconds-since-tone').textContent = state.seconds_since_tone ?? 0;
-
+    // DTMF-дисплей
+    if ($('dtmf-display')) {
+        const seq = state.dtmf_sequence || '';
+        const last = state.last_dtmf_digit || '';
+        const match = state.dtmf_last_match || '';
+        let parts = [];
+        if (seq) parts.push(`...${seq}`);
+        else if (last) parts.push(`последняя: ${last}`);
+        if (match) parts.push(`✓ ${match}`);
+        $('dtmf-display').textContent = parts.length ? parts.join(' ') : '—';
+    }
     const btnStart = $('btn-start');
     const btnStop = $('btn-stop');
     if (btnStart) btnStart.disabled = state.running;
@@ -477,7 +487,61 @@ async function saveFallbackSources(items) {
     const data = await r.json();
     if (data.ok) renderFallbackList(data.items || []);
 }
+// ==================== DTMF ====================
+async function loadDtmfLabels() {
+    if (!IS_ADMIN) return;
+    try {
+        const r = await fetch('/api/dtmf/labels');
+        if (!r.ok) return;
+        const data = await r.json();
+        renderDtmfLabels(data.items || []);
+    } catch (e) { console.error('loadDtmfLabels', e); }
+}
 
+function renderDtmfLabels(items) {
+    const box = $('dtmf-labels-list');
+    if (!box) return;
+    if (!items.length) {
+        box.innerHTML = '<div class="fallback-empty">Метки не заданы — детекция DTMF отключена</div>';
+        return;
+    }
+    box.innerHTML = '';
+    items.forEach((label, idx) => {
+        const row = document.createElement('div');
+        row.className = 'fallback-item';
+        row.innerHTML = `
+            <div class="fb-name" style="font-family:monospace;font-size:1.1rem;letter-spacing:0.15em;">📟 ${esc(label)}</div>
+            <div class="fb-url">DTMF-метка, длина ${label.length}</div>
+            <div style="display:flex;gap:4px;">
+                <button class="btn-test-dtmf" data-label="${esc(label)}" title="Проверить — запустить объявление сейчас">▶</button>
+                <button class="btn-del-dtmf" data-idx="${idx}" title="Удалить">✕</button>
+            </div>`;
+        row.querySelector('.btn-test-dtmf').onclick = async () => {
+            const r = await fetch('/api/dtmf/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ label }),
+            });
+            const data = await r.json();
+            if (!data.ok) alert('❌ Не удалось запустить (проверьте расписание объявлений)');
+        };
+        row.querySelector('.btn-del-dtmf').onclick = async () => {
+            const newItems = items.filter((_, i) => i !== idx);
+            await saveDtmfLabels(newItems);
+        };
+        box.appendChild(row);
+    });
+}
+
+async function saveDtmfLabels(items) {
+    const r = await fetch('/api/dtmf/labels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+    });
+    const data = await r.json();
+    if (data.ok) renderDtmfLabels(data.items || []);
+}
 // ==================== Загрузчики устройств ====================
 async function loadInputDevices() {
     if (!IS_ADMIN) return;
@@ -607,11 +671,29 @@ async function loadAbout() {
 }
 
 // ==================== Главный refresh ====================
+let _refreshInFlight = false;
+let _refreshFailCount = 0;
+let _refreshTimer = null;
+
 async function refreshAll() {
+    if (_refreshInFlight) return;
+    _refreshInFlight = true;
     try {
-        const [sr, ar] = await Promise.all([fetch('/api/status'), fetch('/api/announcements')]);
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 4000);
+        let sr, ar;
+        try {
+            [sr, ar] = await Promise.all([
+                fetch('/api/status', { signal: ctrl.signal }),
+                fetch('/api/announcements', { signal: ctrl.signal }),
+            ]);
+        } finally {
+            clearTimeout(t);
+        }
+
         if (sr.status === 401) { location.href = '/login'; return; }
-        if (sr.status === 403) return;
+        if (sr.status === 403) { _refreshFailCount = 0; return; }
+        if (!sr.ok || !ar.ok) throw new Error('HTTP ' + sr.status);
 
         const { state, settings } = await sr.json();
         const { items } = await ar.json();
@@ -634,9 +716,26 @@ async function refreshAll() {
             $('hw-output-select').value = String(settings.hw_output_device);
         }
         refreshSipStatus();
-    } catch (e) { console.error('refreshAll', e); }
-}
 
+        _refreshFailCount = 0;
+    } catch (e) {
+        _refreshFailCount++;
+        if (_refreshFailCount === 3) {
+            console.warn('Сервер не отвечает. Проверьте, что python main.py запущен.');
+        }
+        if (_refreshFailCount === 10) {
+            console.warn('Сервер недоступен. Пауза 30 секунд, потом снова попытки.');
+            if (_refreshTimer) clearInterval(_refreshTimer);
+            _refreshTimer = null;
+            setTimeout(() => {
+                _refreshFailCount = 0;
+                _refreshTimer = setInterval(refreshAll, 2000);
+            }, 30000);
+        }
+    } finally {
+        _refreshInFlight = false;
+    }
+}
 // ==================== Веб-плеер (для всех ролей) ====================
 if ($('btn-refresh-sinks')) {
     $('btn-refresh-sinks').onclick = loadSinkDevices;
@@ -747,6 +846,7 @@ if (IS_ADMIN) {
         } catch (err) { status.textContent = '❌ ' + err.message; }
     };
 
+    // ==================== Fallback ====================
     $('btn-add-fallback').onclick = async () => {
         const name = $('new-fallback-name').value.trim();
         const url = $('new-fallback-url').value.trim();
@@ -760,6 +860,43 @@ if (IS_ADMIN) {
         $('new-fallback-url').value = '';
     };
 
+    // ==================== DTMF-метки ====================
+    if ($('btn-add-dtmf-label')) {
+        $('btn-add-dtmf-label').onclick = async () => {
+            const inp = $('new-dtmf-label');
+            const label = (inp.value || '').trim().toUpperCase();
+            if (!label) { alert('Введите метку'); return; }
+            if (label.length < 2 || label.length > 10) {
+                alert('Метка должна быть 2–10 символов');
+                return;
+            }
+            if (!/^[0-9*#ABCD]+$/.test(label)) {
+                alert('Разрешены только цифры 0-9, а также *, #, A, B, C, D');
+                return;
+            }
+            const r = await fetch('/api/dtmf/labels');
+            const data = await r.json();
+            const items = data.items || [];
+            if (items.includes(label)) {
+                alert(`Метка "${label}" уже есть`);
+                return;
+            }
+            items.push(label);
+            await saveDtmfLabels(items);
+            inp.value = '';
+        };
+        // Enter в поле ввода — тоже добавить
+        if ($('new-dtmf-label')) {
+            $('new-dtmf-label').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    $('btn-add-dtmf-label').click();
+                }
+            });
+        }
+    }
+
+    // ==================== SIP ====================
     $('btn-sip-save').onclick = async () => {
         const msg = $('sip-message');
         msg.textContent = '⏳ Сохранение...';
@@ -826,6 +963,7 @@ if (IS_ADMIN) {
         };
     }
 
+    // ==================== Fallback enabled toggle ====================
     if ($('fallback_enabled')) {
         $('fallback_enabled').onchange = async e => {
             await fetch('/api/settings', {
@@ -837,6 +975,7 @@ if (IS_ADMIN) {
         };
     }
 
+    // ==================== Форма настроек ====================
     if ($('settings-form')) {
         $('settings-form').onsubmit = async e => {
             e.preventDefault();
@@ -872,6 +1011,7 @@ if (IS_ADMIN) {
         };
     }
 
+    // ==================== Пользователи ====================
     if ($('btn-create-user')) {
         $('btn-create-user').onclick = async () => {
             const status = $('user-status');
@@ -899,7 +1039,6 @@ if (IS_ADMIN) {
         };
     }
 }
-
 // ==================== Сканер (общий для admin) ====================
 function renderScanResults(candidates) {
     const box = $('scan-results');
@@ -970,8 +1109,9 @@ if (IS_ADMIN) {
     loadHwOutputs();
     loadFallbackSources();
     loadUsers();
+    loadDtmfLabels();
     refreshSipStatus();
 }
 loadAbout();
-setInterval(refreshAll, 1000);
+_refreshTimer = setInterval(refreshAll, 1000);
 refreshAll();

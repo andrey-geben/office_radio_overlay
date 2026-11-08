@@ -40,7 +40,6 @@ def _write_meta(data):
 
 
 def _norm_time(v):
-    """Приводит 'HH:MM' к каноничному виду или возвращает None."""
     if not v:
         return None
     v = str(v).strip()
@@ -54,15 +53,6 @@ def _norm_time(v):
 
 
 def _norm_limit(v):
-    try:
-        n = int(v) if v not in (None, "", "0") else 0
-    except (TypeError, ValueError):
-        n = 0
-    return max(0, n)
-
-
-def _norm_interval_minutes(v):
-    """Минимальный интервал между показами одного объявления, в минутах."""
     try:
         n = int(v) if v not in (None, "", "0") else 0
     except (TypeError, ValueError):
@@ -101,6 +91,66 @@ def list_announcements():
         return data
 
 
+def _compute_progress(item, now=None):
+    """Возвращает (progress_0_1, state, hint).
+    state: 'ready' | 'cooldown' | 'blocked'
+    """
+    if now is None:
+        now = datetime.now()
+    today = now.date().isoformat()
+    cur = now.strftime("%H:%M")
+
+    start = item.get("start_time")
+    end = item.get("end_time")
+    if start and cur < start:
+        return 0.0, "blocked", f"до {start}"
+    if end and cur > end:
+        return 0.0, "blocked", f"после {end}"
+
+    plays_today = item.get("plays_today", 0) if item.get("last_reset_date") == today else 0
+    limit = item.get("repeat_limit", 0) or 0
+    if limit > 0 and plays_today >= limit:
+        return 1.0, "blocked", "лимит исчерпан"
+
+    interval_min = item.get("min_interval_minutes", 0) or 0
+    last_played = item.get("last_played")
+
+    if interval_min > 0 and last_played:
+        try:
+            last_dt = datetime.fromisoformat(last_played)
+            total = interval_min * 60
+            delta = (now - last_dt).total_seconds()
+            if delta >= total:
+                return 1.0, "ready", "готов"
+            progress = max(0.0, min(1.0, delta / total))
+            remaining_min = max(1, int((total - delta) / 60 + 0.5))
+            return progress, "cooldown", f"через {remaining_min}м"
+        except Exception:
+            pass
+
+    return 1.0, "ready", "готов"
+
+
+def list_with_progress():
+    items = list_announcements()
+    now = datetime.now()
+    result = []
+    for it in items:
+        ok, reason = check_playable(it, now)
+        progress, q_state, hint = _compute_progress(it, now)
+        if ok and q_state == "blocked":
+            q_state = "ready"
+        result.append({
+            **it,
+            "playable": ok,
+            "reason": reason,
+            "progress": round(progress, 3),
+            "queue_state": q_state,
+            "queue_hint": hint,
+        })
+    return result
+
+
 def get_announcement(ann_id):
     for item in _read_meta():
         if item["id"] == ann_id:
@@ -126,7 +176,7 @@ def add_announcement(file_storage, description, start_time=None, end_time=None,
     start_time = _norm_time(start_time)
     end_time = _norm_time(end_time)
     repeat_limit = _norm_limit(repeat_limit)
-    min_interval_minutes = _norm_interval_minutes(min_interval_minutes)
+    min_interval_minutes = _norm_limit(min_interval_minutes)
 
     _validate_schedule(start_time, end_time, repeat_limit)
 
@@ -190,8 +240,7 @@ def update_schedule(ann_id, start_time, end_time, repeat_limit, min_interval_min
     start_time = _norm_time(start_time)
     end_time = _norm_time(end_time)
     repeat_limit = _norm_limit(repeat_limit)
-    min_interval_minutes = _norm_interval_minutes(min_interval_minutes)
-
+    min_interval_minutes = _norm_limit(min_interval_minutes)
     _validate_schedule(start_time, end_time, repeat_limit)
 
     with _write_lock:
@@ -208,11 +257,6 @@ def update_schedule(ann_id, start_time, end_time, repeat_limit, min_interval_min
 
 
 def check_playable(item, now=None):
-    """
-    Возвращает (ok, reason).
-    Учитывает: окно времени, лимит повторов в день,
-    минимальный интервал между показами одного файла.
-    """
     if now is None:
         now = datetime.now()
     today = now.date().isoformat()
@@ -231,7 +275,6 @@ def check_playable(item, now=None):
     if limit > 0 and plays_today >= limit:
         return False, f"лимит {limit}/день"
 
-    # Минимальный интервал между показами
     interval_min = item.get("min_interval_minutes", 0) or 0
     if interval_min > 0:
         last_played = item.get("last_played")

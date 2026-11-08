@@ -9,8 +9,15 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body data-role="{{ role }}">
-<div class="console-wrap">
-    <main class="console-main">
+<div class="evraz-console">
+    <aside class="evraz-speaker evraz-speaker-left">
+        <div class="speaker-cabinet">
+            <div class="speaker-tweeter"></div>
+            <div class="speaker-woofer"></div>
+            <div class="speaker-badge">EVRAZ</div>
+        </div>
+    </aside>
+    <main class="evraz-main">
         <header class="topbar">
             <h1>📻 OFFICE RADIO OVERLAY</h1>
             <div class="user-block">
@@ -146,6 +153,7 @@
                 <div><span class="label">Объявлений:</span><span id="count" class="value">—</span></div>
                 <div><span class="label">Сейчас:</span><span id="onair-text" class="value">—</span></div>
                 <div><span class="label">Без тона, сек:</span><span id="seconds-since-tone" class="value">0</span></div>
+                <div><span class="label">DTMF:</span><span id="dtmf-display" class="value">—</span></div>
                 <div><span class="label">Событие:</span><span id="event" class="value">—</span></div>
                 <div style="grid-column: 1 / -1"><span class="label">Ошибка:</span><span id="error" class="value">—</span></div>
             </div>
@@ -193,10 +201,18 @@
             <span id="output-status" class="upload-status"></span>
         </div>
 
-        <footer class="footer">
+                <footer class="footer">
             © 2026 Andrey Geben · <a href="https://github.com/andrey-geben/office_radio_overlay" target="_blank">Office Radio Overlay</a> · MIT License · v1.0.0
         </footer>
     </main>
+
+    <aside class="evraz-speaker evraz-speaker-right">
+        <div class="speaker-cabinet">
+            <div class="speaker-tweeter"></div>
+            <div class="speaker-woofer"></div>
+            <div class="speaker-badge">EVRAZ</div>
+        </div>
+    </aside>
 </div>
 
 <!-- ============ МОДАЛКА: ОБЪЯВЛЕНИЯ ============ -->
@@ -300,6 +316,16 @@
                 <span id="scan-status" class="upload-status"></span>
             </div>
             <div id="scan-results" class="scan-results"></div>
+        </div>
+                <h3 style="margin-top:24px;">📟 DTMF-метки (автоматизация вещания)</h3>
+        <div class="hint" style="margin-bottom:12px;">
+            Добавьте метки, которые нужно слушать в эфире. Например, <b>3957</b> для Русского Радио.
+            При совпадении автоматически запустится служебное объявление. Поддерживаются цифры <code>0-9</code>, а также <code>* # A B C D</code> (2–10 символов).
+        </div>
+        <div id="dtmf-labels-list" class="fallback-list"></div>
+        <div class="form-row" style="margin-top:8px;">
+            <label>Новая метка <input type="text" id="new-dtmf-label" placeholder="3957" maxlength="10"></label>
+            <label>&nbsp;<button type="button" id="btn-add-dtmf-label" class="btn btn-add">➕ Добавить метку</button></label>
         </div>
         <form id="settings-form">
             <div class="form-row">

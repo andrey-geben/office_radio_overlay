@@ -1028,3 +1028,188 @@ input[type="time"], input[type="number"] { font-variant-numeric: tabular-nums; }
     .output-panel .form-row { grid-template-columns: 1fr; }
     .output-panel .form-row .btn-refresh { margin-top: 4px; }
 }
+
+/* DTMF-метки */
+.btn-test-dtmf, .btn-del-dtmf {
+    padding: 3px 8px;
+    font-size: 0.8rem;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: "Courier New", monospace;
+    border: 1px solid #0a0805;
+}
+.btn-test-dtmf {
+    background: linear-gradient(180deg, #2a6b2a, #0f3a0f);
+    color: #d0ffd0;
+}
+.btn-test-dtmf:hover { background: linear-gradient(180deg, #3a8a3a, #1a5a1a); }
+.btn-del-dtmf {
+    background: linear-gradient(180deg, #7a3a3a, #4a1e1e);
+    color: #ffd0d0;
+}
+.btn-del-dtmf:hover { background: linear-gradient(180deg, #8a4a4a, #5a2a2a); }
+#dtmf-display {
+    font-family: "Courier New", monospace;
+    letter-spacing: 0.08em;
+    font-variant-numeric: tabular-nums;
+}
+/* ===== ФИРМЕННЫЙ СТИЛЬ ЕВРАЗ (ретро-проигрыватель) ===== */
+:root {
+    --evraz-graphite: #231F20;
+    --evraz-panel: #2E2A2B;
+    --evraz-steel: #A6A6A6;
+    --evraz-orange: #EF7622;
+    --evraz-yellow: #FBAE18;
+    --evraz-red: #EF4F24;
+    --evraz-cream: #F5F0E6;
+    --evraz-shadow: rgba(0, 0, 0, 0.6);
+}
+
+body {
+    background: radial-gradient(ellipse at top, #3a2e2c 0%, var(--evraz-graphite) 100%);
+    color: var(--evraz-cream);
+}
+
+.evraz-console {
+    display: grid;
+    grid-template-columns: 160px 1fr 160px;
+    gap: 0;
+    min-height: 100vh;
+    width: 100%;
+}
+.evraz-main {
+    padding: 20px 28px 0;
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+/* ===== БОКОВЫЕ КОЛОНКИ (двухполосные) ===== */
+.evraz-speaker {
+    background: linear-gradient(180deg, #3a2e2c 0%, var(--evraz-graphite) 100%);
+    border: 2px solid #000;
+    box-shadow: inset 0 0 30px rgba(0,0,0,0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px 10px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+}
+.evraz-speaker-left { border-right: 3px solid #000; }
+.evraz-speaker-right { border-left: 3px solid #000; }
+
+.speaker-cabinet {
+    width: 100%;
+    max-width: 120px;
+    aspect-ratio: 1 / 2.2; /* вертикальный ящик */
+    background: linear-gradient(180deg, #4a3a32, #1a1412);
+    border: 3px solid #000;
+    border-radius: 6px;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-evenly;
+    gap: 8px;
+}
+
+/* Твитер (верхний динамик) */
+.speaker-tweeter {
+    width: 40%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #888, #222);
+    border: 2px solid #000;
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.9);
+}
+
+/* Вуфер (нижний динамик) */
+.speaker-woofer {
+    width: 80%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #444, #0a0a0a);
+    border: 3px solid #000;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.95);
+    position: relative;
+}
+.speaker-woofer::after {
+    content: "";
+    position: absolute;
+    inset: 30%;
+    border-radius: 50%;
+    background: radial-gradient(circle, #666, #111);
+    border: 1px solid #000;
+}
+
+.speaker-badge {
+    font-family: "Courier New", monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    color: var(--evraz-orange);
+    background: #000;
+    padding: 3px 8px;
+    border-radius: 3px;
+    border: 1px solid #333;
+    text-shadow: 0 0 6px rgba(239, 118, 34, 0.4);
+}
+
+/* ===== ПЕРЕОПРЕДЕЛЕНИЕ ОСНОВНЫХ ЦВЕТОВ ===== */
+.card {
+    background: linear-gradient(180deg, var(--evraz-panel) 0%, #1a1412 100%);
+    border: 2px solid #000;
+    box-shadow: 0 4px 12px var(--evraz-shadow), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+.card h2, .card h3 {
+    color: var(--evraz-steel);
+    border-bottom-color: #4a3a32;
+}
+
+/* Кнопки */
+.btn-start { background: linear-gradient(180deg, #2a6b2a, #0f3a0f); } /* зелёный оставляем для PLAY */
+.btn-stop { background: linear-gradient(180deg, var(--evraz-red), #6b0f0f); }
+.btn-save { background: linear-gradient(180deg, var(--evraz-orange), #a04a10); }
+.btn-scan { background: linear-gradient(180deg, #7a4a10, #4a2a08); color: var(--evraz-yellow); }
+
+/* Лампочки */
+.lamp-item.active .led {
+    background: radial-gradient(circle at 30% 30%, var(--evraz-yellow), #6b5a0f);
+    box-shadow: 0 0 12px rgba(251, 174, 24, 0.7);
+}
+.lamp-dcs.active .led {
+    background: radial-gradient(circle at 30% 30%, var(--evraz-orange), #6b3a0f);
+    box-shadow: 0 0 12px rgba(239, 118, 34, 0.7);
+}
+.lamp-onair.active .led {
+    background: radial-gradient(circle at 30% 30%, var(--evraz-red), #6b0f0f);
+    box-shadow: 0 0 12px rgba(239, 79, 36, 0.8);
+}
+
+/* Стрелочные индикаторы */
+.meter line { stroke: var(--evraz-orange); }
+.meter path { stroke: #4a3a32; }
+
+/* Акценты в тексте */
+.status-grid .value { color: var(--evraz-yellow); }
+.queue-item.state-ready { border-color: var(--evraz-yellow); }
+.queue-item.state-playing { border-color: var(--evraz-red); }
+
+/* Подвал */
+.footer {
+    border-top-color: #4a3a32;
+    color: var(--evraz-steel);
+}
+.footer a { color: var(--evraz-orange); }
+
+/* Адаптив: на узких экранах колонки прячем */
+@media (max-width: 1100px) {
+    .evraz-console { grid-template-columns: 1fr; }
+    .evraz-speaker { display: none; }
+    .evraz-main { padding: 16px; }
+}

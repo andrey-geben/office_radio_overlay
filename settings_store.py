@@ -1,14 +1,15 @@
 # settings_store.py
 import os
+import sys
 import json
 import threading
 import config
 
-import sys
 if getattr(sys, "frozen", False):
     BASE_DIR = os.path.dirname(sys.executable)
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 SETTINGS_FILE = os.path.join(BASE_DIR, "assets", "settings.json")
 
 _lock = threading.Lock()
@@ -16,6 +17,7 @@ _lock = threading.Lock()
 
 def _defaults():
     return {
+        # --- Аудио / движок ---
         "source_type": config.SOURCE_TYPE,
         "radio_url": config.RADIO_STREAM_URL,
         "input_device": config.INPUT_DEVICE,
@@ -31,15 +33,20 @@ def _defaults():
         "tone_timeout_enabled": config.TONE_TIMEOUT_ENABLED,
         "tone_timeout_seconds": config.TONE_TIMEOUT_SECONDS,
         "active_announcement_id": None,
+        # --- Fallback ---
         "fallback_enabled": config.FALLBACK_ENABLED,
         "fallback_timeout_seconds": config.FALLBACK_TIMEOUT_SECONDS,
         "fallback_retry_main_seconds": config.FALLBACK_RETRY_MAIN_SECONDS,
         "fallback_sources": config.FALLBACK_SOURCES,
+        # --- DTMF ---
+        "dtmf_labels": config.DTMF_DEFAULT_LABELS,
+        # --- SIP ---
         "sip_domain": "",
         "sip_username": "",
         "sip_password": "",
         "sip_port": 5060,
         "sip_transport": "udp",
+        # --- Автозапуск ---
         "auto_start_engine": False,
         "auto_start_sip": False,
     }

@@ -1,6 +1,7 @@
 # main.py
 import os
 import sys
+import time
 import threading
 import struct
 from flask import (Flask, jsonify, request, render_template, redirect,
@@ -15,8 +16,9 @@ import settings_store
 import users_store
 import config
 
+
 def _resource_path(relative):
-    """Работает и при запуске из исходников, и из .exe PyInstaller."""
+    """Работает и из исходников, и из .exe PyInstaller."""
     try:
         base = sys._MEIPASS
     except Exception:
@@ -32,11 +34,10 @@ app = Flask(
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
 app.secret_key = config.SECRET_KEY
 app.permanent_session_lifetime = timedelta(hours=config.SESSION_LIFETIME_HOURS)
-engine = RadioOverlayEngine()
 
+engine = RadioOverlayEngine()
 sip_client = None
 
-# Первый запуск: создаём admin/admin
 users_store.ensure_default_admin()
 
 
@@ -149,11 +150,32 @@ def audio_stream():
     )
 
 
-# ==================== Статус / управление ====================
+# ==================== Статус ====================
 @app.route("/api/status")
 @login_required
 def api_status():
     return jsonify({"state": engine.get_state(), "settings": engine.get_settings()})
+
+
+@app.route("/api/about")
+@login_required
+def api_about():
+    readme_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "README.md")
+    readme_md = ""
+    if os.path.exists(readme_path):
+        try:
+            with open(readme_path, "r", encoding="utf-8") as f:
+                readme_md = f.read()
+        except Exception:
+            pass
+    return jsonify({
+        "version": "1.0.0",
+        "author": "Andrey Geben",
+        "github": "https://github.com/andrey-geben/office_radio_overlay",
+        "license": "MIT",
+        "year": 2026,
+        "readme_md": readme_md,
+    })
 
 
 @app.route("/api/start", methods=["POST"])
@@ -231,6 +253,7 @@ def api_settings():
 
     if source_changed and was_running:
         def restart():
+            time.sleep(0.3)
             engine.stop()
             engine.start()
         threading.Thread(target=restart, daemon=True).start()
@@ -243,7 +266,7 @@ def api_settings():
 @app.route("/api/announcements", methods=["GET"])
 @login_required
 def api_list_announcements():
-    return jsonify({"items": announcement_store.list_announcements()})
+    return jsonify({"items": announcement_store.list_with_progress()})
 
 
 @app.route("/api/announcements", methods=["POST"])
@@ -253,7 +276,7 @@ def api_upload_announcement():
         return jsonify({"ok": False, "error": "Файл не передан"}), 400
     f = request.files["file"]
     if not f.filename:
-        return jsonify({"ok": False, "error": "Пустое имя"}), 400
+        return jsonify({"ok": False, "error": "Пустое имя файла"}), 400
     try:
         item = announcement_store.add_announcement(
             f,
@@ -344,6 +367,33 @@ def api_set_fallback_sources():
     items = data.get("items", [])
     ok = engine.set_fallback_sources(items)
     return jsonify({"ok": ok, "items": engine.get_settings().get("fallback_sources", [])})
+
+
+# ==================== DTMF ====================
+@app.route("/api/dtmf/labels", methods=["GET"])
+@admin_required
+def api_dtmf_labels_get():
+    return jsonify({"items": engine.get_settings().get("dtmf_labels", [])})
+
+
+@app.route("/api/dtmf/labels", methods=["POST"])
+@admin_required
+def api_dtmf_labels_set():
+    data = request.get_json(silent=True) or {}
+    items = data.get("items", [])
+    cleaned = engine.set_dtmf_labels(items)
+    return jsonify({"ok": True, "items": cleaned})
+
+
+@app.route("/api/dtmf/test", methods=["POST"])
+@admin_required
+def api_dtmf_test():
+    data = request.get_json(silent=True) or {}
+    label = (data.get("label") or "").strip().upper()
+    if not label:
+        return jsonify({"ok": False, "error": "label не передан"}), 400
+    ok = engine.trigger_dtmf_test(label)
+    return jsonify({"ok": ok, "label": label})
 
 
 # ==================== SIP ====================
@@ -457,7 +507,7 @@ def api_autostart():
     return jsonify({"ok": True})
 
 
-# ==================== Пользователи (только admin) ====================
+# ==================== Пользователи ====================
 @app.route("/api/users", methods=["GET"])
 @admin_required
 def api_list_users():
@@ -509,7 +559,7 @@ def api_reset_user_password(username):
     return jsonify({"ok": True})
 
 
-# ==================== Автозапуск ====================
+# ==================== Автозапуск при старте ====================
 def _boot_autostart():
     saved = settings_store.load()
     if saved.get("auto_start_engine"):
@@ -536,26 +586,6 @@ def _boot_autostart():
         except Exception as e:
             print(f"[boot] Ошибка автозапуска SIP: {e}")
 
-@app.route("/api/about")
-@login_required
-def api_about():
-    import os as _os
-    readme_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "README.md")
-    readme_md = ""
-    if _os.path.exists(readme_path):
-        try:
-            with open(readme_path, "r", encoding="utf-8") as f:
-                readme_md = f.read()
-        except Exception:
-            pass
-    return jsonify({
-        "version": "1.0.0",
-        "author": "Andrey Geben",
-        "github": "https://github.com/andrey-geben/office_radio_overlay",
-        "license": "MIT",
-        "year": 2026,
-        "readme_md": readme_md,
-    })
 
 if __name__ == "__main__":
     _boot_autostart()
