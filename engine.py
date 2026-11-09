@@ -1,5 +1,4 @@
 # engine.py
-#БЛОК 1 — заголовок и импорты
 import threading
 import time
 import math
@@ -23,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 SPECTRUM_BANDS = 24
 
-#Блок2 функция _apply_envelope (fade-in/out)
+
 def _apply_envelope(radio_chunk, ann_chunk, pos_samples, total_samples,
                     fade_out_samples, fade_in_samples, ducking):
     radio = np.frombuffer(radio_chunk, dtype=np.int16).astype(np.float32)
@@ -62,7 +61,7 @@ def _apply_envelope(radio_chunk, ann_chunk, pos_samples, total_samples,
     mixed = np.clip(mixed, -32768, 32767)
     return mixed.astype(np.int16).tobytes()
 
-#БЛОК 3 — класс RadioOverlayEngine, __init__
+
 class RadioOverlayEngine:
     def __init__(self):
         self._thread = None
@@ -94,6 +93,7 @@ class RadioOverlayEngine:
         self._net_last_bytes = 0
         self._net_last_time = 0.0
         self._spectrum_last = 0.0
+        self._output_last_update = 0.0
 
         self._output_queue = queue.Queue(maxsize=config.STREAM_QUEUE_SIZE)
 
@@ -140,6 +140,11 @@ class RadioOverlayEngine:
             "last_dtmf_digit": "",
             "dtmf_sequence": "",
             "dtmf_last_match": "",
+            "output_type": "idle",
+            "output_level_db": -90.0,
+            "output_name": None,
+            "output_pos": None,
+            "output_total": None,
         }
 
         self._settings = {
@@ -166,7 +171,6 @@ class RadioOverlayEngine:
             "dtmf_labels": saved.get("dtmf_labels", config.DTMF_DEFAULT_LABELS),
         }
 
-#БЛОК 4 — SIP, публичное API, настройки, DTMF, сканер
     # --- SIP ---
     def enter_sip_mode(self, sip_call=None):
         with self._lock:
@@ -174,6 +178,13 @@ class RadioOverlayEngine:
             self._sip_call = sip_call
             self._state["sip_active"] = True
         self._set_event("📞 SIP-звонок в эфире", force=True)
+        self._update_state(
+            output_type="sip",
+            output_name="SIP-звонок",
+            output_level_db=-90.0,
+            output_pos=None,
+            output_total=None,
+        )
         logger.info("Режим SIP включён.")
 
     def exit_sip_mode(self):
@@ -182,6 +193,11 @@ class RadioOverlayEngine:
             self._sip_call = None
             self._state["sip_active"] = False
         self._set_event("streaming", force=True)
+        self._update_state(
+            output_type="idle",
+            output_name=None,
+            output_level_db=-90.0,
+        )
         logger.info("Режим SIP выключен.")
 
     def is_sip_active(self):
@@ -330,8 +346,6 @@ class RadioOverlayEngine:
             return False
         return True
 
-#БЛОК 5 — start/stop, _update_state, _set_event, _level
-
     def start(self):
         if self._thread and self._thread.is_alive():
             return False
@@ -356,6 +370,12 @@ class RadioOverlayEngine:
             self._dtmf_last_match = ""
             self._dtmf_last_digit_time = 0.0
             self._dtmf.reset()
+            self._output_last_update = 0.0
+            self._state["output_type"] = "idle"
+            self._state["output_level_db"] = -90.0
+            self._state["output_name"] = None
+            self._state["output_pos"] = None
+            self._state["output_total"] = None
             hw_dev = self._settings.get("hw_output_device")
 
         if hw_dev is not None and not self._hw_output.is_running():
@@ -383,6 +403,11 @@ class RadioOverlayEngine:
             self._state["announcement_active"] = False
             self._state["playing_name"] = None
             self._state["playing_id"] = None
+            self._state["output_type"] = "idle"
+            self._state["output_level_db"] = -90.0
+            self._state["output_name"] = None
+            self._state["output_pos"] = None
+            self._state["output_total"] = None
         self._set_event("stopped", force=True)
 
     # --- Внутреннее ---
@@ -429,7 +454,6 @@ class RadioOverlayEngine:
                 buckets[idx][kind] += 1
         return {"window_s": window_s, "bucket_s": bucket_s, "buckets": buckets}
 
-#БЛОК 6 — спектр, scan buffer, _push_output, _pick_announcement
     @staticmethod
     def _compute_spectrum(chunk, prev_spectrum=None):
         try:
@@ -498,7 +522,7 @@ class RadioOverlayEngine:
                 removed = self._scan_buffer.popleft()
                 self._scan_buffer_size -= len(removed)
 
-    def _push_output(self, chunk):
+    def _push_output(self, chunk, output_type="radio", extra=None):
         if chunk is None:
             return
         try:
@@ -515,25 +539,52 @@ class RadioOverlayEngine:
         if self._hw_output.is_running():
             self._hw_output.push(chunk)
 
+        # Метрики исходящего потока (не чаще 10 раз/сек)
+        now = time.time()
+        if now - self._output_last_update < 0.1:
+            return
+        self._output_last_update = now
+        try:
+            _rms, db = self._level(chunk)
+        except Exception:
+            db = -90.0
+        upd = {
+            "output_type": output_type,
+            "output_level_db": round(db, 1),
+        }
+        if extra:
+            upd.update(extra)
+        self._update_state(**upd)
+
+    # --- Выбор объявления и расписания ---
     def _pick_announcement_for_trigger(self):
+        """Возвращает (ann_id, schedule_id) или None."""
         items = announcement_store.list_announcements()
-        playable = []
+        candidates = []
         for it in items:
-            ok, _reason = announcement_store.check_playable(it)
-            if ok:
-                playable.append(it)
-        if not playable:
+            ok, _reason, best_sched = announcement_store.check_playable(it)
+            if ok and best_sched:
+                candidates.append({
+                    "ann_id": it["id"],
+                    "sched_id": best_sched["schedule_id"],
+                    "last_played": best_sched.get("last_played") or "",
+                })
+        if not candidates:
             return None
+
         with self._lock:
             active_id = self._settings.get("active_announcement_id")
-        if active_id:
-            for it in playable:
-                if it["id"] == active_id:
-                    return active_id
-        playable.sort(key=lambda it: it.get("last_played") or "")
-        return playable[0]["id"]
 
-#БЛОК 7 — триггеры (тон, таймаут, DTMF), playback, perf
+        if active_id:
+            active_cands = [c for c in candidates if c["ann_id"] == active_id]
+            if active_cands:
+                active_cands.sort(key=lambda c: c["last_played"])
+                return active_cands[0]["ann_id"], active_cands[0]["sched_id"]
+
+        candidates.sort(key=lambda c: c["last_played"])
+        return candidates[0]["ann_id"], candidates[0]["sched_id"]
+
+    # --- DTMF ---
     def _handle_dtmf_digits(self, digits):
         now = time.time()
         with self._lock:
@@ -576,19 +627,22 @@ class RadioOverlayEngine:
     def trigger_dtmf_test(self, label):
         return self._handle_trigger(dtmf_label=f"test:{label}")
 
+    # --- Триггеры ---
     def _handle_trigger(self, from_timeout=False, dtmf_label=None):
         now = time.time()
         with self._lock:
             if now - self._last_play_time < config.MIN_ANNOUNCE_INTERVAL:
                 return False
 
-        ann_id = self._pick_announcement_for_trigger()
-        if not ann_id:
+        picked = self._pick_announcement_for_trigger()
+        if not picked:
             if dtmf_label:
                 self._set_event(f"📟 DTMF {dtmf_label} — нет объявления в окне", force=True)
             elif not from_timeout:
                 self._set_event("⏸ все объявления на паузе (расписание / лимит / интервал)", force=True)
             return False
+
+        ann_id, sched_id = picked
 
         path = announcement_store.get_path(ann_id)
         if not path:
@@ -619,7 +673,7 @@ class RadioOverlayEngine:
             self._state["playing_name"] = name
             self._state["playing_id"] = ann_id
 
-        announcement_store.increment_play(ann_id)
+        announcement_store.increment_play(ann_id, sched_id)
 
         if dtmf_label:
             self._set_event(f"📟 {name} (DTMF {dtmf_label})", force=True)
@@ -706,7 +760,6 @@ class RadioOverlayEngine:
             self._net_last_time = now
         self._update_state(cpu_percent=round(cpu, 1), network_bps=net_bps)
 
- #БЛОК 8 — _stream_manager (fallback) и _run (главный цикл)
     def _stream_manager(self):
         s = self.get_settings()
         if s["source_type"] == "device":
@@ -837,7 +890,21 @@ class RadioOverlayEngine:
 
                 if self._ann_active:
                     mixed = self._play_chunk(chunk)
-                    self._push_output(mixed if mixed is not None else chunk)
+                    with self._lock:
+                        pos_bytes = self._ann_pos
+                        playing = self._playing_data
+                        ann_name = self._playing_name
+                    pos_s = (pos_bytes / 2 / config.SAMPLE_RATE) if pos_bytes else 0.0
+                    total_s = (len(playing) / 2 / config.SAMPLE_RATE) if playing else 0.0
+                    self._push_output(
+                        mixed if mixed is not None else chunk,
+                        "announcement",
+                        {
+                            "output_name": ann_name,
+                            "output_pos": round(pos_s, 2),
+                            "output_total": round(total_s, 2),
+                        },
+                    )
                     continue
 
                 if ctcss or dcs:
@@ -847,7 +914,9 @@ class RadioOverlayEngine:
                     if not self._ann_active:
                         self._set_event("streaming")
 
-                self._push_output(chunk)
+                with self._lock:
+                    src_name = self._state.get("current_source") or "Основной"
+                self._push_output(chunk, "radio", {"output_name": src_name})
                 time.sleep(0.005)
 
         except Exception as e:
@@ -861,4 +930,9 @@ class RadioOverlayEngine:
                 announcement_active=False,
                 playing_name=None,
                 playing_id=None,
+                output_type="idle",
+                output_level_db=-90.0,
+                output_name=None,
+                output_pos=None,
+                output_total=None,
             )

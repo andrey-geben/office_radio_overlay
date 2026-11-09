@@ -6,6 +6,12 @@
     <title>Office Radio Overlay</title>
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <link rel="apple-touch-icon" href="/static/favicon-256.png">
+    <script>
+        (function() {
+            var t = localStorage.getItem('evraz_theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body data-role="{{ role }}">
@@ -27,6 +33,7 @@
                         {% if role == 'admin' %}админ{% else %}оператор{% endif %}
                     </span>
                 </span>
+                <button type="button" id="theme-toggle" class="btn btn-logout" title="Переключить тему (тёмная / светлая)">🌙</button>
                 <a href="/change-password" class="btn btn-logout">🔑 Пароль</a>
                 <form method="post" action="/logout" class="inline-form">
                     <button type="submit" class="btn btn-logout">Выйти</button>
@@ -158,7 +165,16 @@
                 <div style="grid-column: 1 / -1"><span class="label">Ошибка:</span><span id="error" class="value">—</span></div>
             </div>
         </div>
-
+<!-- ===== Исходящий поток ===== -->
+            <div class="output-flow">
+                <div class="output-flow-title">📡 ИСХОДЯЩИЙ ПОТОК</div>
+                <div class="output-flow-grid">
+                    <div class="output-flow-type idle" id="of-type">⏹ IDLE</div>
+                    <div class="output-flow-info" id="of-info">—</div>
+                    <div class="of-meter" id="of-meter"></div>
+                    <div class="output-flow-level" id="of-level">−∞ dB</div>
+                </div>
+            </div>
         <!-- ============ ВЫХОД АУДИО (на главной) ============ -->
         <div class="card">
             <h2>🔊 Выход аудио</h2>
@@ -170,6 +186,16 @@
                         <button type="button" id="btn-stream-connect" class="btn btn-start">▶ Подключить</button>
                         <audio id="player" controls></audio>
                     </div>
+        <!-- ===== Публичная ссылка на поток ===== -->
+            <div class="stream-link-panel">
+                <div class="stream-link-title">🔗 Публичная ссылка на поток</div>
+                <div class="hint" style="margin-bottom:8px;">
+                    Откройте в браузере, VLC или мобильном плеере — эфир будет слышен без входа в панель.
+                </div>
+                <div id="stream-url-list" class="stream-url-list">
+                    <div class="stream-url-empty">Загрузка...</div>
+                </div>
+            </div>
                     <div class="form-row">
                         <label>Устройство вывода
                             <select id="sink-select"><option value="">По умолчанию</option></select>
@@ -244,6 +270,22 @@
                     <input type="number" name="min_interval_minutes" min="0" value="0" placeholder="60 для «раз в час»">
                 </label>
                 <label>&nbsp;</label>
+            </div>
+                        <div class="form-row">
+                <label>Дни недели <span style="color:#8a7048;font-size:0.78rem;">(не отмечено = все дни)</span></label>
+                <label>&nbsp;</label>
+            </div>
+            <div class="days-row">
+                <label class="day-check"><input type="checkbox" name="days_of_week" value="0"> Пн</label>
+                <label class="day-check"><input type="checkbox" name="days_of_week" value="1"> Вт</label>
+                <label class="day-check"><input type="checkbox" name="days_of_week" value="2"> Ср</label>
+                <label class="day-check"><input type="checkbox" name="days_of_week" value="3"> Чт</label>
+                <label class="day-check"><input type="checkbox" name="days_of_week" value="4"> Пт</label>
+                <label class="day-check"><input type="checkbox" name="days_of_week" value="5"> Сб</label>
+                <label class="day-check"><input type="checkbox" name="days_of_week" value="6"> Вс</label>
+            </div>
+            <div class="hint" style="margin-bottom:8px;">
+                💡 При загрузке создаётся <b>первое</b> расписание. Дополнительные можно добавить в таблице — кнопкой «📅 N распр.».
             </div>
             <button type="submit" class="btn btn-save">⬆ Загрузить</button>
             <span id="upload-status" class="upload-status"></span>
@@ -389,6 +431,16 @@
                 <tr><td colspan="5" class="empty">Загрузка...</td></tr>
             </tbody>
         </table>
+        <h3 style="margin-top:24px;">🎨 Интерфейс</h3>
+        <div class="form-row">
+            <label>Цветовая схема
+                <select id="theme-select">
+                    <option value="dark">Тёмная (EVRAZ Classic)</option>
+                    <option value="light">Светлая (EVRAZ Light)</option>
+                </select>
+            </label>
+            <label>&nbsp;</label>
+        </div>
 
         <h3 style="margin-top:24px;">Тестирование</h3>
         <label class="checkbox-row">
@@ -437,6 +489,58 @@
         </div>
     </div>
 </div>
+<!-- ============ МОДАЛКА: РАСПИСАНИЕ ============ -->
+<!-- ============ МОДАЛКА: СПИСОК РАСПИСАНИЙ ============ -->
+<div class="modal" id="modal-schedules">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-content" style="max-width:900px;">
+        <button class="modal-close" data-close>×</button>
+        <h2>📅 Расписания</h2>
+        <div id="schedules-ann-name" class="hint" style="margin-bottom:14px;color:#8a7048;font-size:0.95rem;"></div>
+        <input type="hidden" id="schedules-ann-id">
+        <div id="schedules-list" class="schedules-list"></div>
+        <button type="button" id="btn-add-schedule" class="btn btn-add" style="margin-top:14px;">➕ Добавить расписание</button>
+    </div>
+</div>
+
+<!-- ============ МОДАЛКА: РЕДАКТОР РАСПИСАНИЯ ============ -->
+<div class="modal" id="modal-schedule-edit">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-content" style="max-width:640px;">
+        <button class="modal-close" data-close>×</button>
+        <h2 id="sched-edit-title">📅 Расписание</h2>
+        <input type="hidden" id="sched-edit-ann-id">
+        <input type="hidden" id="sched-edit-sched-id">
+
+        <div class="form-row">
+            <label>Действует с (HH:MM) * <input type="time" id="sched-edit-start" required></label>
+            <label>Действует до (HH:MM) <input type="time" id="sched-edit-end"></label>
+        </div>
+        <div class="form-row">
+            <label>Повторов в день (0 = без лимита) <input type="number" id="sched-edit-limit" min="0" value="0"></label>
+            <label>Мин. интервал, мин (0 = без паузы) <input type="number" id="sched-edit-interval" min="0" value="0"></label>
+        </div>
+
+        <h3 style="margin-top:16px;">Дни недели</h3>
+        <div class="days-row">
+            <label class="day-check"><input type="checkbox" class="sched-edit-dow" value="0"> Пн</label>
+            <label class="day-check"><input type="checkbox" class="sched-edit-dow" value="1"> Вт</label>
+            <label class="day-check"><input type="checkbox" class="sched-edit-dow" value="2"> Ср</label>
+            <label class="day-check"><input type="checkbox" class="sched-edit-dow" value="3"> Чт</label>
+            <label class="day-check"><input type="checkbox" class="sched-edit-dow" value="4"> Пт</label>
+            <label class="day-check"><input type="checkbox" class="sched-edit-dow" value="5"> Сб</label>
+            <label class="day-check"><input type="checkbox" class="sched-edit-dow" value="6"> Вс</label>
+        </div>
+
+        <div class="buttons" style="margin-top:16px;">
+            <button type="button" id="btn-sched-edit-save" class="btn btn-save">💾 Сохранить</button>
+            <button type="button" id="btn-sched-edit-delete" class="btn btn-stop" style="display:none;">🗑 Удалить</button>
+            <button type="button" class="btn btn-refresh" data-close style="width:auto;">Отмена</button>
+        </div>
+        <span id="sched-edit-msg" class="upload-status"></span>
+    </div>
+</div>
+
 {% endif %}
 
 <!-- ============ МОДАЛКА: О ПРОГРАММЕ ============ -->

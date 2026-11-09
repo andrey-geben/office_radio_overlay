@@ -131,7 +131,6 @@ def _wav_header(sample_rate, channels, bits):
 
 
 @app.route("/stream")
-@login_required
 def audio_stream():
     def generate():
         yield _wav_header(config.SAMPLE_RATE, config.CHANNELS, 16)
@@ -146,6 +145,7 @@ def audio_stream():
         headers={
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
         },
     )
 
@@ -277,6 +277,7 @@ def api_upload_announcement():
     f = request.files["file"]
     if not f.filename:
         return jsonify({"ok": False, "error": "Пустое имя файла"}), 400
+    dow_raw = request.form.getlist("days_of_week")
     try:
         item = announcement_store.add_announcement(
             f,
@@ -285,6 +286,7 @@ def api_upload_announcement():
             end_time=request.form.get("end_time") or None,
             repeat_limit=request.form.get("repeat_limit") or 0,
             min_interval_minutes=request.form.get("min_interval_minutes") or 0,
+            days_of_week=dow_raw if dow_raw else None,
         )
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
@@ -311,25 +313,34 @@ def api_activate_announcement(ann_id):
     return jsonify({"ok": True})
 
 
-@app.route("/api/announcements/<ann_id>/schedule", methods=["POST"])
+@app.route("/api/announcements/<ann_id>/schedules", methods=["POST"])
 @login_required
-def api_update_schedule(ann_id):
+def api_upsert_schedule(ann_id):
     data = request.get_json(silent=True) or {}
     try:
-        item = announcement_store.update_schedule(
+        item, sched = announcement_store.upsert_schedule(
             ann_id,
+            data.get("schedule_id") or None,
             data.get("start_time") or None,
             data.get("end_time") or None,
             data.get("repeat_limit") or 0,
             data.get("min_interval_minutes") or 0,
+            data.get("days_of_week"),
         )
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
-    if not item:
+    if not item or not sched:
         return jsonify({"ok": False, "error": "not found"}), 404
     if engine.get_settings().get("active_announcement_id") == ann_id:
         engine.reload_announcement()
-    return jsonify({"ok": True, "item": item})
+    return jsonify({"ok": True, "item": item, "schedule": sched})
+
+
+@app.route("/api/announcements/<ann_id>/schedules/<sched_id>", methods=["DELETE"])
+@login_required
+def api_delete_schedule(ann_id, sched_id):
+    ok = announcement_store.delete_schedule(ann_id, sched_id)
+    return jsonify({"ok": ok})
 
 
 # ==================== Субтоны ====================
@@ -586,6 +597,39 @@ def _boot_autostart():
         except Exception as e:
             print(f"[boot] Ошибка автозапуска SIP: {e}")
 
+@app.route("/api/stream-url")
+@login_required
+def api_stream_url():
+    """Возвращает список URL, по которым можно слушать поток."""
+    import socket
+    urls = []
+
+    # localhost
+    urls.append({"label": "Локально (этот ПК)", "url": "http://127.0.0.1:5000/stream"})
+
+    # LAN IP
+    try:
+        hostname = socket.gethostname()
+        for ip in socket.gethostbyname_ex(hostname)[2]:
+            if ip.startswith(("192.", "10.", "172.")) and not ip.startswith("127."):
+                urls.append({
+                    "label": "В офисе (LAN)",
+                    "url": f"http://{ip}:5000/stream",
+                })
+                break
+    except Exception:
+        pass
+
+    # Hostname (может работать, если DNS в офисе настроен)
+    try:
+        urls.append({
+            "label": "По имени хоста",
+            "url": f"http://{socket.gethostname()}:5000/stream",
+        })
+    except Exception:
+        pass
+
+    return jsonify({"items": urls})
 
 if __name__ == "__main__":
     _boot_autostart()

@@ -66,6 +66,9 @@ function drawEqualizer(spectrum) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
 
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    const gridColor = isLight ? 'rgba(139,132,120,0.35)' : 'rgba(60,40,25,0.3)';
+
     const bars = spectrum.length || 24;
     const barW = (W / bars) * 0.72;
     const gap = (W / bars) * 0.28;
@@ -86,7 +89,7 @@ function drawEqualizer(spectrum) {
             ctx.fillRect(x, y, barW, 2);
         }
     }
-    ctx.strokeStyle = 'rgba(60,40,25,0.3)';
+    ctx.strokeStyle = gridColor;
     for (let i = 1; i < 4; i++) {
         const y = (H / 4) * i;
         ctx.beginPath();
@@ -109,6 +112,10 @@ function drawToneHistogram(hist) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
 
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    const gridColor = isLight ? 'rgba(139,132,120,0.35)' : 'rgba(60,40,25,0.3)';
+    const markerColor = isLight ? 'rgba(196,85,31,0.7)' : 'rgba(200,60,60,0.6)';
+
     const buckets = hist.buckets || [];
     if (!buckets.length) return;
     const maxCount = Math.max(1, ...buckets.map(b => b.ctcss + b.dcs));
@@ -116,7 +123,7 @@ function drawToneHistogram(hist) {
     const padY = 6;
     const plotH = H - 2 * padY;
 
-    ctx.strokeStyle = 'rgba(60,40,25,0.3)';
+    ctx.strokeStyle = gridColor;
     for (let i = 1; i <= 3; i++) {
         const y = padY + plotH * (i / 4);
         ctx.beginPath();
@@ -140,7 +147,7 @@ function drawToneHistogram(hist) {
             ctx.fillRect(x, H - padY - ctcssH - dcsH, barW, dcsH);
         }
     }
-    ctx.strokeStyle = 'rgba(200,60,60,0.6)';
+    ctx.strokeStyle = markerColor;
     ctx.beginPath();
     ctx.moveTo(W - 0.5, padY);
     ctx.lineTo(W - 0.5, H - padY);
@@ -173,6 +180,45 @@ function renderMeters(state) {
     setMeter('needle-net', kb, 0, 64);
     $('net-val').textContent = bps < 1024 ? bps : kb.toFixed(1);
 }
+function renderOutputFlow(state) {
+    const typeEl = $('of-type');
+    if (!typeEl) return;
+
+    const TYPE_LABELS = {
+        idle: '⏹ IDLE',
+        radio: '🟢 RADIO',
+        announcement: '🔴 ANNOUNCE',
+        sip: '📞 SIP',
+        silence: '⚫ SILENCE',
+    };
+
+    let type = state.output_type || 'idle';
+    const db = (state.output_level_db ?? -90);
+    const name = state.output_name || '';
+    const pos = state.output_pos;
+    const total = state.output_total;
+
+    // Автоопределение тишины: тип radio/announcement, но уровень ниже −80 dB
+    if ((type === 'radio' || type === 'announcement') && db < -80) {
+        type = 'silence';
+    }
+
+    typeEl.className = 'output-flow-type ' + type;
+    typeEl.textContent = TYPE_LABELS[type] || type.toUpperCase();
+
+    let info = name || '—';
+    if (type === 'announcement' && pos != null && total > 0) {
+        info = `${name || '?'} · ${Number(pos).toFixed(1)} / ${Number(total).toFixed(1)} с`;
+    }
+    $('of-info').textContent = info;
+
+    // Уровень: −60..0 dB → 0..100%
+    const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
+    const meter = $('of-meter');
+    if (meter) meter.style.setProperty('--level', pct.toFixed(1) + '%');
+
+    $('of-level').textContent = db <= -89.9 ? '−∞ dB' : `${db.toFixed(1)} dB`;
+}
 
 function renderStatus(state, settings) {
     $('running').textContent = state.running ? '✅ работает' : '⏹ остановлен';
@@ -181,7 +227,7 @@ function renderStatus(state, settings) {
     $('event').textContent = state.last_event || '—';
     $('error').textContent = state.error || '—';
     $('seconds-since-tone').textContent = state.seconds_since_tone ?? 0;
-    // DTMF-дисплей
+
     if ($('dtmf-display')) {
         const seq = state.dtmf_sequence || '';
         const last = state.last_dtmf_digit || '';
@@ -192,6 +238,7 @@ function renderStatus(state, settings) {
         if (match) parts.push(`✓ ${match}`);
         $('dtmf-display').textContent = parts.length ? parts.join(' ') : '—';
     }
+
     const btnStart = $('btn-start');
     const btnStop = $('btn-stop');
     if (btnStart) btnStart.disabled = state.running;
@@ -208,6 +255,7 @@ function renderStatus(state, settings) {
 
     renderMeters(state);
     renderIndicators(state);
+    renderOutputFlow(state);
 
     if (state.spectrum) {
         lastSpectrum = state.spectrum;
@@ -260,6 +308,15 @@ function scheduleText(it) {
     return parts.join(' · ');
 }
 
+function daysCellHtml(it) {
+    const ALL = [0,1,2,3,4,5,6];
+    const SHORT = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+    const days = it.days_of_week || ALL;
+    return ALL.map(d =>
+        `<span class="dow-chip${days.includes(d) ? '' : ' off'}">${SHORT[d]}</span>`
+    ).join('');
+}
+
 function renderAnnouncements(items, activeId) {
     const tb = $('ann-tbody');
     if (!tb) return;
@@ -271,10 +328,10 @@ function renderAnnouncements(items, activeId) {
     for (const it of items) {
         const tr = document.createElement('tr');
         if (it.id === activeId) tr.classList.add('active-row');
-        const lim = it.repeat_limit > 0 ? `/${it.repeat_limit}` : '';
-        const sizeKb = Math.round(it.size / 1024);
+            const sizeKb = Math.round(it.size / 1024);
         const last = it.last_played ? it.last_played.replace('T', ' ').slice(0, 19) : '—';
         const isPriority = it.id === activeId;
+        const n_sched = it.schedules_count ?? (it.schedules || []).length;
         tr.innerHTML = `
             <td class="icon">${isPriority ? '🎯' : ''}</td>
             <td>
@@ -282,8 +339,10 @@ function renderAnnouncements(items, activeId) {
                 <div class="fdesc">${esc(it.description || '—')}</div>
                 <div class="fsize">${sizeKb} КБ · ${it.duration ?? '?'} с</div>
             </td>
-            <td class="small">${scheduleText(it)}</td>
-            <td class="counter">${it.plays_today ?? 0}${lim}</td>
+            <td class="small">
+                <button class="btn-sm btn-schedules" data-id="${it.id}">📅 ${n_sched} распр.</button>
+            </td>
+            <td class="counter">${it.plays_today ?? 0}</td>
             <td class="counter">${it.plays_total ?? 0}</td>
             <td class="small">${last}</td>
             <td class="actions">
@@ -291,15 +350,14 @@ function renderAnnouncements(items, activeId) {
                         title="${isPriority ? 'Снять приоритет' : 'Сделать приоритетным'}">
                     ${isPriority ? '🎯 Снять' : '🎯 Приоритет'}
                 </button>
-                <button class="btn-sm btn-edit" data-id="${it.id}">Расписание</button>
                 <button class="btn-sm btn-delete" data-id="${it.id}">Удалить</button>
             </td>`;
         tb.appendChild(tr);
     }
     tb.querySelectorAll('.btn-activate').forEach(b => b.onclick = () => togglePriority(b.dataset.id, activeId));
     tb.querySelectorAll('.btn-delete').forEach(b => b.onclick = () => deleteAnn(b.dataset.id));
-    tb.querySelectorAll('.btn-edit').forEach(b =>
-        b.onclick = () => editSchedule(b.dataset.id, items.find(x => x.id === b.dataset.id))
+    tb.querySelectorAll('.btn-schedules').forEach(b =>
+        b.onclick = () => openSchedules(b.dataset.id)
     );
 }
 
@@ -319,29 +377,125 @@ async function deleteAnn(id) {
     await fetch(`/api/announcements/${id}`, { method: 'DELETE' });
     refreshAll();
 }
+// ==================== Расписания (множественные) ====================
+async function openSchedules(ann_id) {
+    $('schedules-ann-id').value = ann_id;
+    try {
+        const r = await fetch('/api/announcements');
+        const data = await r.json();
+        const item = (data.items || []).find(x => x.id === ann_id);
+        if (!item) return;
+        $('schedules-ann-name').textContent =
+            `📢 ${item.original_name} — ${item.description || 'без описания'}`;
+        renderSchedulesList(item.schedules || [], ann_id);
+        openModal('modal-schedules');
+    } catch (e) { console.error('openSchedules', e); }
+}
 
-async function editSchedule(id, item) {
-    const start = prompt('Действует с (HH:MM):', item.start_time || '');
-    if (start === null) return;
-    const end = prompt('Действует до (HH:MM, пусто = без ограничения):', item.end_time || '');
-    if (end === null) return;
-    const lim = prompt('Повторов в день (0 = без лимита):', item.repeat_limit || 0);
-    if (lim === null) return;
-    const interval = prompt('Мин. интервал между показами, мин (0 = без паузы):', item.min_interval_minutes || 0);
-    if (interval === null) return;
-    const r = await fetch(`/api/announcements/${id}/schedule`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            start_time: start || null,
-            end_time: end || null,
-            repeat_limit: parseInt(lim) || 0,
-            min_interval_minutes: parseInt(interval) || 0,
-        }),
+function renderSchedulesList(schedules, ann_id) {
+    const box = $('schedules-list');
+    if (!box) return;
+    if (!schedules.length) {
+        box.innerHTML = '<div class="fallback-empty">Расписаний нет — объявление не будет звучать</div>';
+        return;
+    }
+    const DOW = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+    box.innerHTML = '';
+    schedules.forEach((s, idx) => {
+        const row = document.createElement('div');
+        row.className = 'schedule-row';
+        const days = (s.days_of_week || [0,1,2,3,4,5,6]).map(d => DOW[d]).join(" ");
+        const lim = s.repeat_limit > 0 ? `≤${s.repeat_limit}/день` : "∞";
+        const int_ = s.min_interval_minutes > 0 ? ` · ≥${s.min_interval_minutes}м` : "";
+        const last = s.last_played ? s.last_played.replace('T',' ').slice(0,16) : '—';
+        row.innerHTML = `
+            <div class="sched-num">#${idx+1}</div>
+            <div class="sched-body">
+                <div class="sched-times">${s.start_time || '—'}${s.end_time ? '–' + s.end_time : ''}</div>
+                <div class="sched-days">${days}</div>
+                <div class="sched-info">${lim}${int_} · сегодня ${s.plays_today || 0}, всего ${s.plays_total || 0} · последний ${last}</div>
+            </div>
+            <div class="sched-actions">
+                <button class="btn-sm btn-edit-sched" data-sid="${s.schedule_id}" title="Изменить">✎</button>
+                <button class="btn-sm btn-delete-sched" data-sid="${s.schedule_id}" title="Удалить">🗑</button>
+            </div>`;
+        row.querySelector('.btn-edit-sched').onclick = () => openScheduleEdit(ann_id, s);
+        row.querySelector('.btn-delete-sched').onclick = () => doDeleteSchedule(ann_id, s.schedule_id);
+        box.appendChild(row);
     });
-    const data = await r.json();
-    if (!data.ok) alert('❌ ' + (data.error || 'ошибка'));
-    refreshAll();
+}
+
+function openScheduleEdit(ann_id, schedule) {
+    $('sched-edit-ann-id').value = ann_id;
+    $('sched-edit-sched-id').value = schedule ? schedule.schedule_id : '';
+    $('sched-edit-title').textContent = schedule
+        ? `📅 Расписание #${schedule.schedule_id}`
+        : '📅 Новое расписание';
+    $('sched-edit-start').value = schedule ? (schedule.start_time || '') : '';
+    $('sched-edit-end').value = schedule ? (schedule.end_time || '') : '';
+    $('sched-edit-limit').value = schedule ? (schedule.repeat_limit || 0) : 0;
+    $('sched-edit-interval').value = schedule ? (schedule.min_interval_minutes || 0) : 0;
+    const days = schedule ? (schedule.days_of_week || [0,1,2,3,4,5,6]) : [0,1,2,3,4,5,6];
+    document.querySelectorAll('.sched-edit-dow').forEach(cb => {
+        cb.checked = days.includes(parseInt(cb.value));
+    });
+    $('btn-sched-edit-delete').style.display = schedule ? 'inline-block' : 'none';
+    $('sched-edit-msg').textContent = '';
+    openModal('modal-schedule-edit');
+}
+
+async function saveScheduleEdit() {
+    const ann_id = $('sched-edit-ann-id').value;
+    const sched_id = $('sched-edit-sched-id').value;
+    const msg = $('sched-edit-msg');
+    const start = $('sched-edit-start').value;
+    const end = $('sched-edit-end').value;
+    const lim = parseInt($('sched-edit-limit').value) || 0;
+    const interval = parseInt($('sched-edit-interval').value) || 0;
+    const days = Array.from(document.querySelectorAll('.sched-edit-dow:checked')).map(cb => parseInt(cb.value));
+
+    if (!start) { msg.textContent = '❌ Укажите время начала'; return; }
+    if (!end && lim <= 0) { msg.textContent = '❌ Укажите время окончания или лимит'; return; }
+    if (!days.length) { msg.textContent = '❌ Выберите хотя бы один день'; return; }
+
+    msg.textContent = '⏳ Сохранение...';
+    try {
+        const r = await fetch(`/api/announcements/${ann_id}/schedules`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                schedule_id: sched_id || null,
+                start_time: start, end_time: end || null,
+                repeat_limit: lim, min_interval_minutes: interval,
+                days_of_week: days,
+            }),
+        });
+        const data = await r.json();
+        if (data.ok) {
+            closeModal('modal-schedule-edit');
+            formInitialized = false;
+            refreshAll();
+            setTimeout(() => openSchedules(ann_id), 200);
+        } else {
+            msg.textContent = '❌ ' + (data.error || 'ошибка');
+        }
+    } catch (e) { msg.textContent = '❌ ' + e.message; }
+}
+
+async function doDeleteSchedule(ann_id, sched_id) {
+    if (!confirm('Удалить это расписание?')) return;
+    try {
+        const r = await fetch(`/api/announcements/${ann_id}/schedules/${sched_id}`,
+                              { method: 'DELETE' });
+        const data = await r.json();
+        if (data.ok) {
+            formInitialized = false;
+            refreshAll();
+            setTimeout(() => openSchedules(ann_id), 200);
+        } else {
+            alert('❌ ' + (data.error || 'ошибка'));
+        }
+    } catch (e) { alert('❌ ' + e.message); }
 }
 
 // ==================== Очередь в эфир ====================
@@ -487,6 +641,7 @@ async function saveFallbackSources(items) {
     const data = await r.json();
     if (data.ok) renderFallbackList(data.items || []);
 }
+
 // ==================== DTMF ====================
 async function loadDtmfLabels() {
     if (!IS_ADMIN) return;
@@ -542,6 +697,7 @@ async function saveDtmfLabels(items) {
     const data = await r.json();
     if (data.ok) renderDtmfLabels(data.items || []);
 }
+
 // ==================== Загрузчики устройств ====================
 async function loadInputDevices() {
     if (!IS_ADMIN) return;
@@ -606,7 +762,6 @@ async function refreshSipStatus() {
         if (!r.ok) return;
         const data = await r.json();
 
-        // Лампочка SIP — для всех ролей
         const lamp = $('ind-sip');
         if (lamp) {
             lamp.classList.remove('active-idle', 'active-call');
@@ -670,6 +825,29 @@ async function loadAbout() {
     } catch (e) { console.error('loadAbout', e); }
 }
 
+// ==================== Переключение темы ====================
+function applyTheme(theme) {
+    theme = (theme === 'light') ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+    try { localStorage.setItem('evraz_theme', theme); } catch (e) {}
+
+    const btn = document.getElementById('theme-toggle');
+    if (btn) btn.textContent = theme === 'light' ? '☀️' : '🌙';
+
+    const sel = document.getElementById('theme-select');
+    if (sel) sel.value = theme;
+
+    // Перерисовать canvas с новыми цветами после применения CSS
+    setTimeout(() => {
+        if (lastSpectrum) drawEqualizer(lastSpectrum);
+        if (lastHistogram) drawToneHistogram(lastHistogram);
+    }, 30);
+}
+
+function getCurrentTheme() {
+    return document.documentElement.getAttribute('data-theme') || 'dark';
+}
+
 // ==================== Главный refresh ====================
 let _refreshInFlight = false;
 let _refreshFailCount = 0;
@@ -708,6 +886,10 @@ async function refreshAll() {
         if (IS_ADMIN && !fallbackInitialized) {
             loadFallbackSources();
         }
+        if (IS_ADMIN && $('dtmf-labels-list') && !$('dtmf-labels-list').dataset.loaded) {
+            loadDtmfLabels();
+            $('dtmf-labels-list').dataset.loaded = '1';
+        }
         renderAnnouncements(items, settings.active_announcement_id);
         renderQueue(items, state.playing_id);
 
@@ -736,6 +918,7 @@ async function refreshAll() {
         _refreshInFlight = false;
     }
 }
+
 // ==================== Веб-плеер (для всех ролей) ====================
 if ($('btn-refresh-sinks')) {
     $('btn-refresh-sinks').onclick = loadSinkDevices;
@@ -811,7 +994,6 @@ if (IS_ADMIN) {
         setTimeout(() => st.textContent = '', 4000);
     };
 
-    // Аппаратный выход (только admin)
     $('btn-refresh-hw-outputs').onclick = loadHwOutputs;
     $('btn-apply-hw-output').onclick = async () => {
         const status = $('output-status');
@@ -846,7 +1028,6 @@ if (IS_ADMIN) {
         } catch (err) { status.textContent = '❌ ' + err.message; }
     };
 
-    // ==================== Fallback ====================
     $('btn-add-fallback').onclick = async () => {
         const name = $('new-fallback-name').value.trim();
         const url = $('new-fallback-url').value.trim();
@@ -860,7 +1041,6 @@ if (IS_ADMIN) {
         $('new-fallback-url').value = '';
     };
 
-    // ==================== DTMF-метки ====================
     if ($('btn-add-dtmf-label')) {
         $('btn-add-dtmf-label').onclick = async () => {
             const inp = $('new-dtmf-label');
@@ -885,7 +1065,6 @@ if (IS_ADMIN) {
             await saveDtmfLabels(items);
             inp.value = '';
         };
-        // Enter в поле ввода — тоже добавить
         if ($('new-dtmf-label')) {
             $('new-dtmf-label').addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
@@ -896,7 +1075,6 @@ if (IS_ADMIN) {
         }
     }
 
-    // ==================== SIP ====================
     $('btn-sip-save').onclick = async () => {
         const msg = $('sip-message');
         msg.textContent = '⏳ Сохранение...';
@@ -963,7 +1141,6 @@ if (IS_ADMIN) {
         };
     }
 
-    // ==================== Fallback enabled toggle ====================
     if ($('fallback_enabled')) {
         $('fallback_enabled').onchange = async e => {
             await fetch('/api/settings', {
@@ -975,7 +1152,6 @@ if (IS_ADMIN) {
         };
     }
 
-    // ==================== Форма настроек ====================
     if ($('settings-form')) {
         $('settings-form').onsubmit = async e => {
             e.preventDefault();
@@ -1010,8 +1186,125 @@ if (IS_ADMIN) {
             refreshAll();
         };
     }
+    // ==================== Сохранение расписания из модалки ====================
+    if ($('btn-sched-save')) {
+        $('btn-sched-save').onclick = async () => {
+            const id = $('sched-id').value;
+            if (!id) return;
+            const msg = $('sched-msg');
+            const start = $('sched-start').value;
+            const end = $('sched-end').value;
+            const lim = parseInt($('sched-limit').value) || 0;
+            const interval = parseInt($('sched-interval').value) || 0;
+            const days = Array.from(document.querySelectorAll('.sched-dow:checked'))
+                .map(cb => parseInt(cb.value));
 
-    // ==================== Пользователи ====================
+            if (!start) {
+                msg.textContent = '❌ Укажите время начала';
+                return;
+            }
+            if (!end && lim <= 0) {
+                msg.textContent = '❌ Укажите время окончания или лимит повторов';
+                return;
+            }
+            if (days.length === 0) {
+                msg.textContent = '❌ Выберите хотя бы один день недели';
+                return;
+            }
+
+            msg.textContent = '⏳ Сохранение...';
+            try {
+                const r = await fetch(`/api/announcements/${id}/schedule`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        start_time: start || null,
+                        end_time: end || null,
+                        repeat_limit: lim,
+                        min_interval_minutes: interval,
+                        days_of_week: days,
+                    }),
+                });
+                const data = await r.json();
+                if (data.ok) {
+                    msg.textContent = '✅ Сохранено';
+                    setTimeout(() => {
+                        closeModal('modal-schedule');
+                        formInitialized = false;
+                        refreshAll();
+                    }, 400);
+                } else {
+                    msg.textContent = '❌ ' + (data.error || 'ошибка');
+                }
+            } catch (e) {
+                msg.textContent = '❌ ' + e.message;
+            }
+        };
+    }
+    // ==================== Расписания (модалка) ====================
+    if ($('btn-add-schedule')) {
+        $('btn-add-schedule').onclick = () => {
+            const ann_id = $('schedules-ann-id').value;
+            closeModal('modal-schedules');
+            setTimeout(() => openScheduleEdit(ann_id, null), 100);
+        };
+    }
+    if ($('btn-sched-edit-save')) {
+        $('btn-sched-edit-save').onclick = saveScheduleEdit;
+    }
+    if ($('btn-sched-edit-delete')) {
+        $('btn-sched-edit-delete').onclick = async () => {
+            const ann_id = $('sched-edit-ann-id').value;
+            const sched_id = $('sched-edit-sched-id').value;
+            if (!sched_id) return;
+            if (!confirm('Удалить это расписание?')) return;
+            await doDeleteSchedule(ann_id, sched_id);
+            closeModal('modal-schedule-edit');
+        };
+    }
+        // ==================== Расписания (модалка) ====================
+    if ($('btn-add-schedule')) {
+        $('btn-add-schedule').onclick = () => {
+            const ann_id = $('schedules-ann-id').value;
+            closeModal('modal-schedules');
+            setTimeout(() => openScheduleEdit(ann_id, null), 100);
+        };
+    }
+    if ($('btn-sched-edit-save')) {
+        $('btn-sched-edit-save').onclick = saveScheduleEdit;
+    }
+    if ($('btn-sched-edit-delete')) {
+        $('btn-sched-edit-delete').onclick = async () => {
+            const ann_id = $('sched-edit-ann-id').value;
+            const sched_id = $('sched-edit-sched-id').value;
+            if (!sched_id) return;
+            if (!confirm('Удалить это расписание?')) return;
+            await doDeleteSchedule(ann_id, sched_id);
+            closeModal('modal-schedule-edit');
+        };
+    }
+        // ==================== Расписания (модалка) ====================
+    if ($('btn-add-schedule')) {
+        $('btn-add-schedule').onclick = () => {
+            const ann_id = $('schedules-ann-id').value;
+            closeModal('modal-schedules');
+            setTimeout(() => openScheduleEdit(ann_id, null), 100);
+        };
+    }
+    if ($('btn-sched-edit-save')) {
+        $('btn-sched-edit-save').onclick = saveScheduleEdit;
+    }
+    if ($('btn-sched-edit-delete')) {
+        $('btn-sched-edit-delete').onclick = async () => {
+            const ann_id = $('sched-edit-ann-id').value;
+            const sched_id = $('sched-edit-sched-id').value;
+            if (!sched_id) return;
+            if (!confirm('Удалить это расписание?')) return;
+            await doDeleteSchedule(ann_id, sched_id);
+            closeModal('modal-schedule-edit');
+        };
+    }
+
     if ($('btn-create-user')) {
         $('btn-create-user').onclick = async () => {
             const status = $('user-status');
@@ -1039,7 +1332,8 @@ if (IS_ADMIN) {
         };
     }
 }
-// ==================== Сканер (общий для admin) ====================
+
+// ==================== Сканер ====================
 function renderScanResults(candidates) {
     const box = $('scan-results');
     if (!box) return;
@@ -1103,7 +1397,28 @@ if ($('upload-form')) {
 }
 
 // ==================== Старт ====================
+(function initTheme() {
+    const saved = (function() {
+        try { return localStorage.getItem('evraz_theme') || 'dark'; }
+        catch (e) { return 'dark'; }
+    })();
+    applyTheme(saved);
+
+    const btn = document.getElementById('theme-toggle');
+    if (btn) {
+        btn.onclick = () => {
+            applyTheme(getCurrentTheme() === 'dark' ? 'light' : 'dark');
+        };
+    }
+
+    const sel = document.getElementById('theme-select');
+    if (sel) {
+        sel.addEventListener('change', (e) => applyTheme(e.target.value));
+    }
+})();
+
 loadSinkDevices();
+loadStreamUrls();
 if (IS_ADMIN) {
     loadInputDevices();
     loadHwOutputs();
@@ -1111,6 +1426,49 @@ if (IS_ADMIN) {
     loadUsers();
     loadDtmfLabels();
     refreshSipStatus();
+}
+loadAbout();
+// ==================== Публичная ссылка на поток ====================
+async function loadStreamUrls() {
+    const box = $('stream-url-list');
+    if (!box) return;
+    try {
+        const r = await fetch('/api/stream-url');
+        if (!r.ok) return;
+        const data = await r.json();
+        renderStreamUrls(data.items || []);
+    } catch (e) { console.error('loadStreamUrls', e); }
+}
+
+function renderStreamUrls(items) {
+    const box = $('stream-url-list');
+    if (!box) return;
+    if (!items.length) {
+        box.innerHTML = '<div class="stream-url-empty">Не удалось определить адрес</div>';
+        return;
+    }
+    box.innerHTML = '';
+    for (const it of items) {
+        const row = document.createElement('div');
+        row.className = 'stream-url-row';
+        row.innerHTML = `
+            <div class="stream-url-label">${esc(it.label)}</div>
+            <input type="text" class="stream-url-input" value="${esc(it.url)}" readonly>
+            <button class="btn-sm btn-copy-url" title="Скопировать">📋</button>
+            <a class="btn-sm btn-open-url" href="${esc(it.url)}" target="_blank" title="Открыть">▶</a>
+        `;
+        row.querySelector('.btn-copy-url').onclick = async () => {
+            try {
+                await navigator.clipboard.writeText(it.url);
+                const btn = row.querySelector('.btn-copy-url');
+                btn.textContent = '✓';
+                setTimeout(() => btn.textContent = '📋', 1500);
+            } catch (e) {
+                alert('Не удалось скопировать. Выделите текст вручную.');
+            }
+        };
+        box.appendChild(row);
+    }
 }
 loadAbout();
 _refreshTimer = setInterval(refreshAll, 1000);

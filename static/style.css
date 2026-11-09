@@ -1213,3 +1213,888 @@ body {
     .evraz-speaker { display: none; }
     .evraz-main { padding: 16px; }
 }
+
+/* ==========================================================================
+   СВЕТЛАЯ ТЕМА (EVRAZ Light)
+   Переопределяет тёмные компоненты. Акценты (оранжевый/жёлтый/красный)
+   остаются без изменений — это фирменные цвета EVRAZ.
+   ========================================================================== */
+
+[data-theme="light"] body {
+    background: linear-gradient(135deg, #F5F0E6 0%, #E8E5DE 100%);
+    color: #231F20;
+}
+
+/* ===== Шапка ===== */
+[data-theme="light"] .topbar {
+    border-bottom-color: #D4CFC4;
+}
+[data-theme="light"] .topbar h1 {
+    color: #C4551F;                       /* тёмно-оранжевый вместо янтарного */
+    text-shadow: none;
+}
+[data-theme="light"] .user-name {
+    color: #4A4540;
+}
+[data-theme="light"] .role-admin {
+    background: #FFF3E0;
+    color: #C4551F;
+    border-color: #EF7622;
+}
+[data-theme="light"] .role-operator {
+    background: #E8F0F8;
+    color: #1E5A8F;
+    border-color: #6A9ACC;
+}
+
+/* ===== Транспорт ===== */
+[data-theme="light"] .transport {
+    background: linear-gradient(180deg, #EDE8DD, #DDD8CC);
+    border-color: #B8B0A0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+[data-theme="light"] .transport-btn {
+    background: linear-gradient(180deg, #FFFFFF, #F0EBE0);
+    border-color: #B8B0A0;
+    color: #8B4513;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 2px 3px rgba(0,0,0,0.1);
+}
+[data-theme="light"] .transport-btn:hover:not(:disabled) {
+    background: linear-gradient(180deg, #FFF8E8, #F5EAD0);
+    color: #C4551F;
+}
+[data-theme="light"] .transport-btn:active:not(:disabled),
+[data-theme="light"] .transport-btn.active {
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.15);
+}
+[data-theme="light"] .transport-btn.btn-play {
+    background: linear-gradient(180deg, #7BC77B, #4A9A4A);
+    color: #FFFFFF;
+    border-color: #2D6B2D;
+}
+[data-theme="light"] .transport-btn.btn-play:hover:not(:disabled) {
+    background: linear-gradient(180deg, #8DD98D, #5AAA5A);
+}
+[data-theme="light"] .transport-btn.btn-stop {
+    background: linear-gradient(180deg, #E07A7A, #B84545);
+    color: #FFFFFF;
+    border-color: #8B2020;
+}
+[data-theme="light"] .transport-btn.btn-stop:hover:not(:disabled) {
+    background: linear-gradient(180deg, #EB8A8A, #C85555);
+}
+
+/* ===== Карточки ===== */
+[data-theme="light"] .card {
+    background: linear-gradient(180deg, #FFFFFF 0%, #FAF7EE 100%);
+    border-color: #D4CFC4;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+[data-theme="light"] .card h2,
+[data-theme="light"] .card h3 {
+    color: #C4551F;
+    border-bottom-color: #E0D8C8;
+}
+
+/* ===== Дашборд ===== */
+[data-theme="light"] .dashboard {
+    background: #F8F3E8;
+    border-color: #E0D8C8;
+}
+[data-theme="light"] .gauge-wrap {
+    background: linear-gradient(180deg, #FFFFFF, #F5F0E6);
+    border-color: #D4CFC4;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+[data-theme="light"] .meter path {
+    stroke: #B8B0A0;
+}
+[data-theme="light"] .meter-label {
+    color: #8B6B50;
+}
+[data-theme="light"] .meter-value {
+    color: #C4551F;
+    text-shadow: none;
+}
+[data-theme="light"] .meter-value small {
+    color: #8B6B50;
+}
+
+/* Лампочки — оставляем тёмный корпус (это приборные LED) */
+[data-theme="light"] .lamp-item {
+    background: linear-gradient(180deg, #2E2A2B, #1A1614);
+    border-color: #000;
+}
+[data-theme="light"] .lamp-label {
+    color: #A6A6A6;
+}
+[data-theme="light"] .lamp-power {
+    color: #8B6B50;
+}
+[data-theme="light"] .lamp-item.active {
+    border-color: #EF7622;
+}
+
+/* ===== Эквалайзер и гистограмма (тёмные — там canvas с градиентом) ===== */
+[data-theme="light"] .equalizer-wrap {
+    background: #1A1412;                  /* оставляем тёмный фон для контраста с цветными полосами */
+    border-color: #4A3A32;
+}
+[data-theme="light"] .eq-label {
+    color: #A6A6A6;
+}
+[data-theme="light"] .tone-axis {
+    color: #8B6B50;
+}
+[data-theme="light"] .tone-stats {
+    color: #F5F0E6;
+}
+[data-theme="light"] .tone-stats b {
+    color: #FBAE18;
+}
+
+/* ===== Очередь в эфир ===== */
+[data-theme="light"] .queue-panel {
+    background: #F8F3E8;
+    border-color: #D4CFC4;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+[data-theme="light"] .queue-label {
+    color: #8B6B50;
+}
+[data-theme="light"] .queue-empty {
+    color: #8B6B50;
+}
+[data-theme="light"] .queue-item-vert {
+    background: #FFFFFF;
+    border-color: #D4CFC4;
+}
+[data-theme="light"] .queue-num-big {
+    color: #8B4513;
+    text-shadow: none;
+}
+[data-theme="light"] .queue-item-vert.state-ready .queue-num-big {
+    color: #2D6B2D;
+    text-shadow: none;
+}
+[data-theme="light"] .queue-item-vert.state-playing .queue-num-big {
+    color: #B84545;
+    text-shadow: none;
+}
+[data-theme="light"] .queue-item-vert.state-blocked .queue-num-big {
+    color: #B8B0A0;
+}
+[data-theme="light"] .queue-led-vert {
+    background: #F5F0E6;
+    border-color: #B8B0A0;
+}
+[data-theme="light"] .queue-hint-vert {
+    color: #8B6B50;
+}
+
+/* ===== Статус-сетка ===== */
+[data-theme="light"] .status-grid {
+    background: #F8F3E8;
+    border-color: #E0D8C8;
+}
+[data-theme="light"] .status-grid .label {
+    color: #8B6B50;
+}
+[data-theme="light"] .status-grid .value {
+    color: #231F20;
+}
+
+/* ===== Кнопки ===== */
+[data-theme="light"] .btn-logout,
+[data-theme="light"] .btn-refresh {
+    background: linear-gradient(180deg, #FFFFFF, #EDE8DD);
+    color: #8B4513;
+    border-color: #B8B0A0;
+}
+[data-theme="light"] .btn-logout:hover,
+[data-theme="light"] .btn-refresh:hover {
+    background: linear-gradient(180deg, #FFF8E8, #F0E8D8);
+}
+[data-theme="light"] .btn-sm {
+    background: linear-gradient(180deg, #FFFFFF, #EDE8DD);
+    color: #8B4513;
+    border-color: #B8B0A0;
+}
+[data-theme="light"] .btn-sm:hover:not(:disabled) {
+    background: linear-gradient(180deg, #FFF8E8, #F0E8D8);
+}
+
+/* ===== Формы ===== */
+[data-theme="light"] .form-row label,
+[data-theme="light"] .checkbox-row,
+[data-theme="light"] .radio-row {
+    color: #6B5444;
+}
+[data-theme="light"] .form-row input,
+[data-theme="light"] .form-row select,
+[data-theme="light"] .output-panel .form-row select {
+    background: #FFFFFF;
+    color: #231F20;
+    border-color: #D4CFC4;
+}
+[data-theme="light"] .form-row input:focus,
+[data-theme="light"] .form-row select:focus {
+    border-color: #EF7622;
+    box-shadow: 0 0 0 2px rgba(239,118,34,0.15);
+}
+
+/* ===== Fallback ===== */
+[data-theme="light"] .fallback-block {
+    background: #F8F3E8;
+    border-color: #E0D8C8;
+}
+[data-theme="light"] .fallback-item {
+    background: #FFFFFF;
+    border-color: #D4CFC4;
+}
+[data-theme="light"] .fallback-item .fb-name {
+    color: #231F20;
+}
+[data-theme="light"] .fallback-item .fb-url {
+    color: #8B6B50;
+}
+[data-theme="light"] .fallback-empty {
+    color: #8B6B50;
+}
+
+/* ===== Выход аудио ===== */
+[data-theme="light"] .output-panel {
+    background: #F8F3E8;
+    border-color: #E0D8C8;
+}
+[data-theme="light"] .output-panel-title {
+    color: #8B4513;
+    border-bottom-color: #E0D8C8;
+}
+[data-theme="light"] .output-panel .player-row audio {
+    filter: none;                         /* убираем тёмный sepia-фильтр в светлой теме */
+}
+[data-theme="light"] .hint {
+    color: #8B6B50;
+}
+[data-theme="light"] .hint code {
+    background: #EDE8DD;
+    color: #4A3020;
+}
+
+/* ===== Таблицы ===== */
+[data-theme="light"] .upload-form {
+    border-bottom-color: #E0D8C8;
+}
+[data-theme="light"] .ann-table th {
+    color: #8B4513;
+}
+[data-theme="light"] .ann-table td {
+    border-bottom-color: #EDE8DD;
+}
+[data-theme="light"] .ann-table .fname {
+    color: #231F20;
+}
+[data-theme="light"] .ann-table .fdesc,
+[data-theme="light"] .ann-table .small {
+    color: #6B5444;
+}
+[data-theme="light"] .ann-table .fsize {
+    color: #B8B0A0;
+}
+[data-theme="light"] .ann-table .counter {
+    color: #C4551F;
+}
+[data-theme="light"] .ann-table .empty {
+    color: #B8B0A0;
+}
+[data-theme="light"] .ann-table tr.active-row {
+    background: #FFF8E8;
+}
+
+/* ===== Сканер ===== */
+[data-theme="light"] .scan-block {
+    border-bottom-color: #E0D8C8;
+}
+[data-theme="light"] .scan-table th {
+    color: #8B4513;
+    border-bottom-color: #E0D8C8;
+}
+[data-theme="light"] .scan-table td {
+    border-bottom-color: #EDE8DD;
+}
+[data-theme="light"] .scan-table .mono {
+    color: #C4551F;
+}
+[data-theme="light"] .scan-table tr.good {
+    background: #E8F5E8;
+}
+[data-theme="light"] .scan-table tr.mid {
+    background: #FFF8E0;
+}
+
+/* ===== Модалки ===== */
+[data-theme="light"] .modal-content {
+    background: linear-gradient(180deg, #FFFFFF 0%, #FAF7EE 100%);
+    border-color: #B8B0A0;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+}
+[data-theme="light"] .modal-content h2 {
+    color: #C4551F;
+    border-bottom-color: #E0D8C8;
+}
+[data-theme="light"] .modal-backdrop {
+    background: rgba(245, 240, 230, 0.85);
+}
+
+/* ===== О программе ===== */
+[data-theme="light"] .about-block h3 {
+    color: #C4551F;
+}
+[data-theme="light"] .about-block p {
+    color: #4A4540;
+}
+[data-theme="light"] .about-table td {
+    color: #6B5444;
+}
+[data-theme="light"] .about-table td:last-child {
+    color: #231F20;
+}
+[data-theme="light"] .about-table a {
+    color: #C4551F;
+}
+[data-theme="light"] .about-readme {
+    background: #F8F3E8;
+    border-color: #E0D8C8;
+}
+[data-theme="light"] .about-readme pre {
+    color: #4A4540;
+}
+[data-theme="light"] .about-copyright {
+    background: #F8F3E8;
+    border-color: #E0D8C8;
+}
+[data-theme="light"] .about-copyright p {
+    color: #4A4540;
+}
+
+/* ===== Подвал ===== */
+[data-theme="light"] .footer {
+    border-top-color: #E0D8C8;
+    color: #8B6B50;
+}
+[data-theme="light"] .footer a {
+    color: #C4551F;
+}
+
+/* ===== upload-status ===== */
+[data-theme="light"] .upload-status {
+    color: #6B5444;
+}
+/* ==========================================================================
+   СВЕТЛАЯ ТЕМА — дополнение: колонки, лампочки, эквалайзер, веб-плеер
+   ========================================================================== */
+
+/* ===== КОЛОНКИ — светлый «мебельный» корпус ===== */
+[data-theme="light"] .evraz-speaker {
+    background: linear-gradient(180deg, #D4CFC4 0%, #A8A398 100%);
+    box-shadow: inset 0 0 30px rgba(0,0,0,0.15);
+}
+[data-theme="light"] .evraz-speaker-left {
+    border-right-color: #8B8478;
+}
+[data-theme="light"] .evraz-speaker-right {
+    border-left-color: #8B8478;
+}
+[data-theme="light"] .speaker-cabinet {
+    background: linear-gradient(180deg, #E8E2D5 0%, #C8C2B5 100%);
+    border-color: #8B8478;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.2);
+}
+[data-theme="light"] .speaker-tweeter {
+    background: radial-gradient(circle at 35% 35%, #FFFFFF, #B0A99C);
+    border-color: #6B6458;
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.3);
+}
+[data-theme="light"] .speaker-woofer {
+    background: radial-gradient(circle at 35% 35%, #8B8478, #4A453E);
+    border-color: #6B6458;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+}
+[data-theme="light"] .speaker-woofer::after {
+    background: radial-gradient(circle, #B0A99C, #6B6458);
+    border-color: #4A453E;
+}
+[data-theme="light"] .speaker-badge {
+    background: #FFFFFF;
+    color: #C4551F;
+    border-color: #D4CFC4;
+    text-shadow: none;
+}
+
+/* ===== ЛАМПОЧКИ — светлый корпус, яркие LED ===== */
+[data-theme="light"] .lamp-item {
+    background: linear-gradient(180deg, #FFFFFF, #EDE8DD);
+    border-color: #D4CFC4;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+[data-theme="light"] .lamp-item .led {
+    background: radial-gradient(circle at 30% 30%, #C8C2B5, #8B8478);
+    box-shadow: inset 0 -1px 3px rgba(0,0,0,0.4);
+}
+[data-theme="light"] .lamp-label {
+    color: #6B5444;
+}
+[data-theme="light"] .lamp-power {
+    color: #8B6B50;
+}
+[data-theme="light"] .lamp-item.active {
+    border-color: #EF7622;
+    box-shadow: 0 0 0 2px rgba(239,118,34,0.15);
+}
+[data-theme="light"] .lamp-item.active .led {
+    background: radial-gradient(circle at 30% 30%, #7FFF7F, #2D8B2D);
+    box-shadow: 0 0 10px rgba(45,139,45,0.7), inset 0 -1px 3px rgba(0,0,0,0.3);
+}
+[data-theme="light"] .lamp-dcs.active .led {
+    background: radial-gradient(circle at 30% 30%, #7FBFFF, #1E5A8F);
+    box-shadow: 0 0 10px rgba(30,90,143,0.7), inset 0 -1px 3px rgba(0,0,0,0.3);
+}
+[data-theme="light"] .lamp-onair.active .led {
+    background: radial-gradient(circle at 30% 30%, #FF7F7F, #B82020);
+    box-shadow: 0 0 12px rgba(184,32,32,0.8), inset 0 -1px 3px rgba(0,0,0,0.3);
+}
+
+/* ===== ЭКВАЛАЙЗЕР и ГИСТОГРАММА — светлый фон canvas ===== */
+[data-theme="light"] .equalizer-wrap {
+    background: linear-gradient(180deg, #FFFFFF, #F5F0E6);
+    border-color: #D4CFC4;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+[data-theme="light"] .eq-label {
+    color: #8B4513;
+}
+[data-theme="light"] .tone-axis {
+    color: #8B6B50;
+}
+[data-theme="light"] .tone-stats {
+    color: #4A4540;
+}
+[data-theme="light"] .tone-stats b {
+    color: #C4551F;
+}
+
+/* ===== ВЕБ-ПЛЕЕР <audio> — светлый контрол ===== */
+[data-theme="light"] .player-row audio,
+[data-theme="light"] .output-panel .player-row audio {
+    background: #FFFFFF;
+    border-color: #D4CFC4;
+    box-shadow: inset 0 0 8px rgba(0,0,0,0.05), 0 1px 3px rgba(0,0,0,0.08);
+    color-scheme: light;
+    filter: none;
+}
+[data-theme="light"] .player-row audio::-webkit-media-controls-panel,
+[data-theme="light"] .output-panel .player-row audio::-webkit-media-controls-panel {
+    background: linear-gradient(180deg, #FFFFFF, #F0EBE0);
+}
+[data-theme="light"] .player-row audio::-webkit-media-controls-current-time-display,
+[data-theme="light"] .player-row audio::-webkit-media-controls-time-remaining-display {
+    color: #231F20;
+}
+[data-theme="light"] .player-row audio::-webkit-media-controls-volume-slider {
+    filter: none;
+}
+/* ===== Колонки по бокам остаются тёмными (это "мебель", а не UI) ===== */
+/* Ничего не переопределяем — визуальный якорь стиля остаётся */
+/* ===== Дни недели ===== */
+.days-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+    padding: 6px 0;
+}
+.day-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: linear-gradient(180deg, #2a1f14, #1a1209);
+    border: 1px solid #3a2818;
+    border-radius: 5px;
+    color: #b89870;
+    font-family: "Courier New", monospace;
+    font-size: 0.85rem;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.1s;
+}
+.day-check:hover {
+    border-color: #d4a86a;
+    color: #ffdc8a;
+}
+.day-check input {
+    margin: 0;
+    accent-color: #d4a86a;
+}
+.day-check:has(input:checked) {
+    border-color: #d4a86a;
+    background: linear-gradient(180deg, #3a2818, #2a1f14);
+    color: #ffdc8a;
+    box-shadow: 0 0 0 1px rgba(212,168,106,0.3);
+}
+
+/* Светлая тема */
+[data-theme="light"] .day-check {
+    background: linear-gradient(180deg, #FFFFFF, #EDE8DD);
+    border-color: #D4CFC4;
+    color: #6B5444;
+}
+[data-theme="light"] .day-check:hover {
+    border-color: #EF7622;
+    color: #C4551F;
+}
+[data-theme="light"] .day-check:has(input:checked) {
+    background: linear-gradient(180deg, #FFF3E0, #FFE8CC);
+    border-color: #EF7622;
+    color: #C4551F;
+    box-shadow: 0 0 0 1px rgba(239,118,34,0.3);
+}
+
+/* Колонка "Дни" в таблице (если добавите) */
+.ann-table .days-cell {
+    font-family: "Courier New", monospace;
+    font-size: 0.8rem;
+    color: #b89870;
+}
+.ann-table .days-cell .dow-chip {
+    display: inline-block;
+    padding: 1px 4px;
+    margin-right: 2px;
+    background: rgba(212,168,106,0.15);
+    border-radius: 3px;
+    color: #ffdc8a;
+}
+.ann-table .days-cell .dow-chip.off {
+    opacity: 0.25;
+    color: #8a7048;
+}
+/* ===== Расписания ===== */
+.schedules-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.schedule-row {
+    display: grid;
+    grid-template-columns: 40px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 14px;
+    background: linear-gradient(180deg, #2a1f14, #1a1209);
+    border: 1px solid #3a2818;
+    border-radius: 5px;
+}
+.sched-num {
+    font-family: "Courier New", monospace;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #d4a86a;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+.sched-body { min-width: 0; }
+.sched-times {
+    font-family: "Courier New", monospace;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #ffdc8a;
+    letter-spacing: 0.04em;
+}
+.sched-days {
+    font-family: "Courier New", monospace;
+    font-size: 0.82rem;
+    color: #b89870;
+    margin-top: 2px;
+    letter-spacing: 0.05em;
+}
+.sched-info {
+    font-family: "Courier New", monospace;
+    font-size: 0.75rem;
+    color: #8a7048;
+    margin-top: 2px;
+}
+.sched-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* Светлая тема */
+[data-theme="light"] .schedule-row {
+    background: linear-gradient(180deg, #FFFFFF, #F5F0E6);
+    border-color: #D4CFC4;
+}
+[data-theme="light"] .sched-num {
+    color: #C4551F;
+}
+[data-theme="light"] .sched-times {
+    color: #231F20;
+}
+[data-theme="light"] .sched-days {
+    color: #6B5444;
+}
+[data-theme="light"] .sched-info {
+    color: #8B6B50;
+}
+/* ===== Исходящий поток ===== */
+.output-flow {
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: #0a0805;
+    border: 1px solid #2a1f14;
+    border-radius: 6px;
+}
+.output-flow-title {
+    font-family: "Courier New", monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.22em;
+    color: #8a7048;
+    margin-bottom: 8px;
+}
+.output-flow-grid {
+    display: grid;
+    grid-template-columns: auto 1fr 180px auto;
+    gap: 12px;
+    align-items: center;
+}
+.output-flow-type {
+    font-family: "Courier New", monospace;
+    font-size: 0.82rem;
+    font-weight: 700;
+    padding: 5px 12px;
+    border-radius: 4px;
+    background: #1a1209;
+    color: #8a7048;
+    letter-spacing: 0.08em;
+    min-width: 130px;
+    text-align: center;
+    border: 1px solid #2a1f14;
+    transition: all 0.15s;
+}
+.output-flow-type.radio {
+    color: #3aa83a;
+    border-color: #1e6b1e;
+    background: rgba(20,60,20,0.2);
+}
+.output-flow-type.announcement {
+    color: #ef4444;
+    border-color: #6b0f0f;
+    background: rgba(80,20,20,0.3);
+    animation: pulse 1s infinite;
+}
+.output-flow-type.sip {
+    color: #3b82f6;
+    border-color: #1e3a6b;
+    background: rgba(20,40,80,0.3);
+    animation: pulse 0.6s infinite;
+}
+.output-flow-type.silence {
+    color: #5a4a32;
+    border-color: #2a1f14;
+    background: #0a0805;
+}
+
+.output-flow-info {
+    font-size: 0.82rem;
+    color: #b89870;
+    font-family: "Courier New", monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.of-meter {
+    height: 10px;
+    background: #1a1209;
+    border-radius: 5px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.8);
+}
+.of-meter::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(90deg, #22c55e 0%, #d4c44a 60%, #e07a3a 85%, #c83a3a 100%);
+    clip-path: inset(0 calc(100% - var(--level, 0%)) 0 0);
+    transition: clip-path 0.08s linear;
+}
+
+.output-flow-level {
+    font-family: "Courier New", monospace;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #ffdc8a;
+    font-variant-numeric: tabular-nums;
+    min-width: 70px;
+    text-align: right;
+}
+
+/* Адаптив */
+@media (max-width: 720px) {
+    .output-flow-grid {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+    .output-flow-type, .output-flow-level {
+        text-align: left;
+        min-width: 0;
+    }
+    .of-meter {
+        width: 100%;
+    }
+}
+
+/* Светлая тема */
+[data-theme="light"] .output-flow {
+    background: #FFFFFF;
+    border-color: #D4CFC4;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+[data-theme="light"] .output-flow-title {
+    color: #8B4513;
+}
+[data-theme="light"] .output-flow-type {
+    background: #F5F0E6;
+    border-color: #D4CFC4;
+}
+[data-theme="light"] .output-flow-type.radio {
+    color: #2D6B2D;
+    border-color: #4A9A4A;
+    background: #E8F5E8;
+}
+[data-theme="light"] .output-flow-type.announcement {
+    color: #B82020;
+    border-color: #B82020;
+    background: #FFE8E8;
+}
+[data-theme="light"] .output-flow-type.sip {
+    color: #1E5A8F;
+    border-color: #6A9ACC;
+    background: #E8F0F8;
+}
+[data-theme="light"] .output-flow-type.silence {
+    color: #8B8478;
+    border-color: #D4CFC4;
+    background: #F5F0E6;
+}
+[data-theme="light"] .output-flow-info {
+    color: #4A4540;
+}
+[data-theme="light"] .of-meter {
+    background: #EDE8DD;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+}
+[data-theme="light"] .output-flow-level {
+    color: #231F20;
+}
+/* ===== Публичная ссылка на поток ===== */
+.stream-link-panel {
+    margin-top: 14px;
+    padding: 12px 14px;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid #2a1f14;
+    border-radius: 6px;
+}
+.stream-link-title {
+    font-family: "Courier New", monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.15em;
+    color: #8a7048;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    font-weight: 700;
+}
+.stream-url-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.stream-url-empty {
+    color: #6a5438;
+    font-size: 0.85rem;
+    padding: 8px;
+    font-family: "Courier New", monospace;
+}
+.stream-url-row {
+    display: grid;
+    grid-template-columns: 130px 1fr auto auto;
+    gap: 8px;
+    align-items: center;
+}
+.stream-url-label {
+    font-family: "Courier New", monospace;
+    font-size: 0.78rem;
+    color: #b89870;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.stream-url-input {
+    width: 100%;
+    padding: 6px 10px;
+    background: #0a0805;
+    color: #ffdc8a;
+    border: 1px solid #3a2818;
+    border-radius: 4px;
+    font-family: "Courier New", monospace;
+    font-size: 0.85rem;
+    outline: none;
+    cursor: text;
+}
+.stream-url-input:focus {
+    border-color: #d4a86a;
+    box-shadow: 0 0 0 2px rgba(212,168,106,0.15);
+}
+.btn-copy-url,
+.btn-open-url {
+    padding: 6px 10px;
+    font-size: 0.85rem;
+    min-width: 36px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+}
+.btn-copy-url { color: #d4a86a; border-color: #bfdbfe; }
+.btn-open-url { color: #22c55e; border-color: #86efac; }
+
+/* Светлая тема */
+[data-theme="light"] .stream-link-panel {
+    background: #F8F3E8;
+    border-color: #E0D8C8;
+}
+[data-theme="light"] .stream-link-title {
+    color: #8B4513;
+}
+[data-theme="light"] .stream-url-label {
+    color: #6B5444;
+}
+[data-theme="light"] .stream-url-input {
+    background: #FFFFFF;
+    color: #231F20;
+    border-color: #D4CFC4;
+}
+[data-theme="light"] .stream-url-empty {
+    color: #8B6B50;
+}
+
+@media (max-width: 720px) {
+    .stream-url-row {
+        grid-template-columns: 1fr auto auto;
+    }
+    .stream-url-label {
+        grid-column: 1 / -1;
+        font-size: 0.7rem;
+    }
+}
