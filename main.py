@@ -1,6 +1,7 @@
 # main.py
 import os
 import sys
+import preflight
 import time
 import threading
 import struct
@@ -728,9 +729,29 @@ def api_reset_user_password(username):
         return jsonify({"ok": False, "error": str(e)}), 400
     return jsonify({"ok": True})
 
+@app.route("/api/preflight")
+def api_preflight():
+    from preflight import get_last_results, CRITICAL, WARNING
+    results = get_last_results()
+    return jsonify({
+        "critical": [m for s, m in results if s == CRITICAL],
+        "warnings": [m for s, m in results if s == WARNING],
+    })
 
 # ==================== Запуск ====================
 if __name__ == '__main__':
+    # 1) Проверка компонентов
+    results = preflight.run_checks()
+    # 2) Показать пользователю (только critical/warning или при первом запуске)
+    saved = settings_store.load()
+    first_run = not saved.get("preflight_done", False)
+    ok = preflight.report_to_user(results, first_run=first_run)
+    if not ok:
+        # Critical — выходим
+        sys.exit(1)
+    # Запомнить, что первая проверка пройдена
+    if first_run:
+        settings_store.update(preflight_done=True)
     # ... ваш запуск Flask ...
     try:
         app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)

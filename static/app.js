@@ -1,3 +1,45 @@
+// === PREFLIGHT BANNER: показать предупреждения из /api/preflight ===
+(function () {
+    function showPreflightBanner(data) {
+        if (!data) return;
+        const warnings = data.warnings || [];
+        const critical = data.critical || [];
+        if (!warnings.length && !critical.length) return;
+
+        const banner = document.createElement('div');
+        banner.style.cssText =
+            'background:#fff3cd;color:#856404;padding:10px 14px;' +
+            'border-bottom:2px solid #ffc107;' +
+            'font-family:Consolas,monospace;font-size:13px;' +
+            'line-height:1.5;';
+        let html = '';
+        if (critical.length) {
+            html += '<b style="color:#721c24;">⛔ Критические проблемы:</b><br>';
+            html += critical.map(w => '• ' + w).join('<br>');
+            html += '<br>';
+        }
+        if (warnings.length) {
+            html += '<b>⚠ Предупреждения:</b><br>';
+            html += warnings.map(w => '• ' + w).join('<br>');
+        }
+        banner.innerHTML = html;
+        document.body.prepend(banner);
+    }
+
+    function fetchPreflight() {
+        fetch('/api/preflight')
+            .then(r => r.json())
+            .then(showPreflightBanner)
+            .catch(err => console.warn('[preflight] fetch error:', err));
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', fetchPreflight);
+    } else {
+        fetchPreflight();
+    }
+})();
+
 let formInitialized = false;
 let sipInitialized = false;
 let fallbackInitialized = false;
