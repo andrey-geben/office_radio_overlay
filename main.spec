@@ -1,13 +1,13 @@
-# office_radio_overlay.spec
+﻿# office_radio_overlay.spec
 # -*- mode: python ; coding: utf-8 -*-
 import os
-from PyInstaller.utils.hooks import collect_all, collect_dynamic_libs
+import sys
+from PyInstaller.utils.hooks import collect_all
 
-# --- Собираем всё нужное из pjsua2 (DLL + скрытые импорты) ---
+# --- pjsua2: DLL + скрытые импорты ---
 pjsua2_datas, pjsua2_binaries, pjsua2_hidden = collect_all('pjsua2')
 
-# --- sounddevice: добавляем папку _sounddevice_data с portaudio DLL ---
-# PyInstaller иногда её подхватывает, но надёжнее указать явно.
+# --- sounddevice: папка _sounddevice_data с portaudio DLL ---
 import sounddevice
 sd_dir = os.path.dirname(sounddevice.__file__)
 sd_data_dir = os.path.join(os.path.dirname(sd_dir), '_sounddevice_data')
@@ -15,11 +15,11 @@ sd_data_dir = os.path.join(os.path.dirname(sd_dir), '_sounddevice_data')
 datas = [
     ('templates', 'templates'),
     ('static', 'static'),
-    # pjsua2
+    # assets/ (chime.wav, settings.json, users.json, announcements/) и ffmpeg.exe
+    # НЕ бандлим — копируются вручную рядом с .exe после сборки.
     *pjsua2_datas,
 ]
 
-# Если _sounddevice_data существует — добавляем
 if os.path.isdir(sd_data_dir):
     datas.append((sd_data_dir, '_sounddevice_data'))
 
@@ -28,16 +28,16 @@ binaries = [
 ]
 
 hiddenimports = [
-    # Flask-шаблоны и Jinja компилируются динамически
     'jinja2.ext',
-    # pjsua2
+    'sip_worker',
+    'preflight',
     *pjsua2_hidden,
-    # scipy/numpy часто требуют явных подсказок
     'scipy.signal',
     'scipy._lib.array_api_compat.numpy.fft',
     'numpy',
     'pydub',
     'psutil',
+    'sounddevice',
 ]
 
 a = Analysis(
@@ -50,8 +50,8 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        # Уменьшаем размер — выкидываем неиспользуемые тяжёлые пакеты
         'tkinter', 'matplotlib', 'PyQt5', 'PySide2', 'IPython',
+        'PySide6', 'pandas', 'notebook',
     ],
     noarchive=False,
 )
@@ -64,7 +64,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name='office_radio_overlay',
-    icon='app.ico',
+    icon='app.ico' if os.path.isfile('app.ico') else None,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

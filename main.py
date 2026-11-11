@@ -1,6 +1,13 @@
 # main.py
 import os
 import sys
+# --- Frozen mode: этот же .exe запущен как SIP-worker ---
+# Должно быть ДО импортов preflight/Flask/engine — worker не нуждается в них.
+if "--sip-worker" in sys.argv:
+    from sip_worker import main as sip_worker_main
+    sip_worker_main()
+    sys.exit(0)
+
 import preflight
 import time
 import threading

@@ -43,14 +43,23 @@ class SipClient:
                 return False
             self._running = True
 
-        worker_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "sip_worker.py",
-        )
+        # В dev: python -u sip_worker.py
+        # В .exe: тот же .exe с флагом --sip-worker (перехват в main.py)
+        if getattr(sys, "frozen", False):
+            cmd = [sys.executable, "--sip-worker"]
+        else:
+            worker_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "sip_worker.py",
+            )
+            cmd = [sys.executable, "-u", worker_path]
+
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"  # чтобы JSON-строки шли без задержки
 
         try:
             self._proc = subprocess.Popen(
-                [sys.executable, "-u", worker_path],
+                cmd,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -58,6 +67,7 @@ class SipClient:
                 text=True,
                 encoding="utf-8",
                 errors="replace",
+                env=env,
             )
         except Exception as e:
             print(f"[SIP] subprocess start error: {e}")

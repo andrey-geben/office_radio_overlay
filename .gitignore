@@ -48,3 +48,7 @@ logs/
 *.tmp
 *.bak
 assets/users.json
+
+# --- Audio files (chime) ---
+/chime.wav
+*.wav
