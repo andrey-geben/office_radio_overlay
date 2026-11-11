@@ -762,11 +762,51 @@ async function refreshSipStatus() {
         if (!r.ok) return;
         const data = await r.json();
 
+                // Лампочка SIP в столбике лампочек
         const lamp = $('ind-sip');
         if (lamp) {
             lamp.classList.remove('active-idle', 'active-call');
             if (data.engine_sip_active) lamp.classList.add('active-call');
             else if (data.running) lamp.classList.add('active-idle');
+        }
+
+        // LED на кнопке SIP в транспорте (только у админа кнопка есть)
+        const btnLed = $('sip-btn-led');
+        if (btnLed) {
+            btnLed.classList.remove('off', 'idle', 'call');
+            if (data.engine_sip_active) btnLed.classList.add('call');
+            else if (data.running) btnLed.classList.add('idle');
+            else btnLed.classList.add('off');
+        }
+
+        // Полоска статуса SIP над исходящим потоком
+        const strip = $('sip-status-strip');
+        const stripLed = $('sip-strip-led');
+        const stripText = $('sip-strip-text');
+        const stripHint = $('sip-strip-hint');
+        if (strip && stripLed && stripText) {
+            strip.classList.remove('state-idle', 'state-call', 'state-off');
+            stripLed.classList.remove('off', 'idle', 'call');
+            if (data.engine_sip_active) {
+                strip.classList.add('state-call');
+                stripLed.classList.add('call');
+                stripText.textContent = '📞 звонок в эфире';
+                if (stripHint) stripHint.textContent = 'аудио идёт на устройство вывода';
+            } else if (data.running) {
+                strip.classList.add('state-idle');
+                stripLed.classList.add('idle');
+                stripText.textContent = '✅ подключён';
+                if (stripHint) {
+                    stripHint.textContent = data.sip_username
+                        ? `${data.sip_username}@${data.sip_domain}`
+                        : 'ожидание звонков';
+                }
+            } else {
+                strip.classList.add('state-off');
+                stripLed.classList.add('off');
+                stripText.textContent = '⏹ отключён';
+                if (stripHint) stripHint.textContent = 'SIP-клиент не запущен';
+            }
         }
 
         if (!IS_ADMIN) return;
@@ -781,6 +821,7 @@ async function refreshSipStatus() {
             $('sip_port').value = data.sip_port || 5060;
             $('sip_transport').value = data.sip_transport || 'udp';
             $('auto_start_sip').checked = !!data.auto_start_sip;
+            if ($('sip_chime_enabled')) $('sip_chime_enabled').checked = data.sip_chime_enabled !== false;
             if ($('auto_start_engine')) $('auto_start_engine').checked = !!data.auto_start_engine;
             $('sip_password').placeholder = data.sip_password_set
                 ? '•••••••• (сохранён)' : 'Введите пароль';
@@ -796,6 +837,7 @@ function _sipPayload() {
         sip_password: $('sip_password').value,
         sip_port: parseInt($('sip_port').value) || 5060,
         sip_transport: $('sip_transport').value,
+        sip_chime_enabled: $('sip_chime_enabled') ? $('sip_chime_enabled').checked : true,
     };
 }
 
@@ -931,29 +973,80 @@ if ($('sink-select')) {
             $('output-status').textContent = '❌ браузер не поддерживает выбор устройства';
             return;
         }
-        try { await player.setSinkId(id || ''); }
-        catch (err) { $('output-status').textContent = '❌ ' + err.message + ' (нужен HTTPS)'; }
+        try {
+            // Запоминаем, играл ли плеер до смены устройства
+            const wasPlaying = !player.paused;
+            await player.setSinkId(id || '');
+            // setSinkId может прервать play() — если это случилось, возобновляем
+            if (wasPlaying && player.paused && streamConnected) {
+                try {
+                    await player.play();
+                } catch (err) {
+                    if (err.name !== 'AbortError') {
+                        console.debug('play() после setSinkId:', err.message);
+                    }
+                }
+            }
+        } catch (err) {
+            $('output-status').textContent = '❌ ' + err.message + ' (нужен HTTPS)';
+        }
     };
 }
 if ($('btn-stream-connect')) {
+    let _streamConnecting = false;
     $('btn-stream-connect').onclick = async () => {
         const player = $('player');
         const btn = $('btn-stream-connect');
+
+        if (_streamConnecting) return;   // блокируем повторные клики
+
         if (streamConnected) {
-            player.pause();
+            // Отключение: останавливаем и полностью сбрасываем состояние
+            try { player.pause(); } catch (e) {}
             player.removeAttribute('src');
-            player.load();
+            try { player.load(); } catch (e) {}
             streamConnected = false;
             btn.textContent = '▶ Подключить';
-        } else {
-            player.src = '/stream';
-            try {
-                await player.play();
-                streamConnected = true;
-                btn.textContent = '⏸ Отключить';
-            } catch (e) {
-                $('output-status').textContent = '❌ ' + e.message;
+            return;
+        }
+
+        // Подключение
+        _streamConnecting = true;
+        btn.disabled = true;
+        btn.textContent = '⏳ Подключение...';
+        $('output-status').textContent = '';
+
+        // Сбрасываем старый буфер перед новым src
+        try { player.pause(); } catch (e) {}
+        player.removeAttribute('src');
+        try { player.load(); } catch (e) {}
+
+        player.src = '/stream';
+
+        try {
+            const playPromise = player.play();
+            if (playPromise !== undefined) {
+                await playPromise;
             }
+            streamConnected = true;
+            btn.textContent = '⏸ Отключить';
+        } catch (e) {
+            // AbortError — это НЕ ошибка, а нормальное прерывание
+            if (e.name === 'AbortError') {
+                console.debug('play() прерван (норма):', e.message);
+                // Если плеер всё-таки играет — считаем подключённым
+                if (!player.paused) {
+                    streamConnected = true;
+                    btn.textContent = '⏸ Отключить';
+                }
+            } else {
+                $('output-status').textContent = '❌ ' + e.message;
+                streamConnected = false;
+                btn.textContent = '▶ Подключить';
+            }
+        } finally {
+            _streamConnecting = false;
+            btn.disabled = false;
         }
     };
 }
@@ -1117,7 +1210,22 @@ if (IS_ADMIN) {
         await fetch('/api/sip/stop', { method: 'POST' });
         refreshSipStatus();
     };
-
+    if ($('btn-test-chime')) {
+        $('btn-test-chime').onclick = async () => {
+            const msg = $('sip-message');
+            msg.textContent = '🔔 Воспроизведение сигнала...';
+            try {
+                const r = await fetch('/api/sip/test-chime', { method: 'POST' });
+                const data = await r.json();
+                if (data.ok) {
+                    msg.textContent = '✅ Сигнал воспроизводится';
+                } else {
+                    msg.textContent = '❌ ' + (data.error || 'ошибка');
+                }
+            } catch (e) { msg.textContent = '❌ ' + e.message; }
+            setTimeout(() => msg.textContent = '', 4000);
+        };
+    }
     $('auto_start_sip').onchange = async e => {
         await fetch('/api/autostart', {
             method: 'POST',

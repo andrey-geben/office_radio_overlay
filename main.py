@@ -4,9 +4,13 @@ import sys
 import time
 import threading
 import struct
+import faulthandler
 from flask import (Flask, jsonify, request, render_template, redirect,
                    url_for, session, Response, stream_with_context)
 from datetime import timedelta
+
+faulthandler.enable()
+
 from engine import RadioOverlayEngine
 from audio_capture import list_input_devices
 from audio_output import HardwareOutput
@@ -39,6 +43,82 @@ engine = RadioOverlayEngine()
 sip_client = None
 
 users_store.ensure_default_admin()
+
+
+def _validate_sip_domain(domain):
+    """Проверяет IP-адрес или hostname. Возвращает (ok, error_message)."""
+    if not domain:
+        return False, "SIP-домен не указан"
+    # Похоже на IP? Тогда проверяем строго
+    if domain.count(".") >= 2 and domain.replace(".", "").isdigit():
+        try:
+            import ipaddress
+            ipaddress.ip_address(domain)
+            return True, None
+        except ValueError:
+            return False, (
+                f"'{domain}' похоже на IP-адрес, но не является валидным. "
+                f"Каждый октет должен быть 0–255. Проверьте: ping {domain}"
+            )
+    # Hostname — пропускаем
+    return True, None
+
+
+def _ensure_chime():
+    """Генерирует assets/chime.wav, если его нет."""
+    try:
+        chime_path = config.SIP_CHIME_FILE
+        if not os.path.isabs(chime_path):
+            chime_path = os.path.join(settings_store.BASE_DIR, chime_path)
+        if os.path.exists(chime_path):
+            return
+        from make_chime import generate_chime
+        n = generate_chime(chime_path, sample_rate=config.SAMPLE_RATE)
+        print(f"[boot] Сгенерирован сигнал внимания: {chime_path} ({n/44100:.2f}с)")
+    except Exception as e:
+        print(f"[boot] Не удалось сгенерировать chime: {e}")
+
+
+def _boot_autostart():
+    global sip_client
+    saved = settings_store.load()
+
+    if saved.get("auto_start_engine"):
+        print("[boot] Автозапуск движка...")
+        try:
+            engine.start()
+        except Exception as e:
+            print(f"[boot] Ошибка автозапуска движка: {e}")
+
+    if saved.get("auto_start_sip") and saved.get("sip_domain") and \
+       saved.get("sip_username") and saved.get("sip_password"):
+        print("[boot] Автозапуск SIP...")
+        try:
+            from sip_client import SipClient
+
+            try:
+                engine.reset_sip_state()
+            except Exception:
+                pass
+
+            playback_device = saved.get("sip_playback_device")
+            if playback_device is None:
+                playback_device = 6
+
+            sip_client = SipClient(
+                engine,
+                domain=saved["sip_domain"],
+                username=saved["sip_username"],
+                password=saved["sip_password"],
+                port=saved.get("sip_port", 5060),
+                transport=saved.get("sip_transport", "udp"),
+                playback_device=playback_device,
+            )
+            ok = sip_client.start()
+            print(f"[boot] SIP-клиент создан: start()={ok}")
+        except Exception as e:
+            print(f"[boot] Ошибка автозапуска SIP: {e}")
+            sip_client = None
 
 
 # ==================== Авторизация ====================
@@ -108,6 +188,7 @@ def change_password():
     )
 
 
+# ==================== UI ====================
 @app.route("/")
 @login_required
 def index():
@@ -116,8 +197,6 @@ def index():
         username=session.get("username", "?"),
         role=session.get("role", "operator"),
     )
-
-
 # ==================== HTTP-стрим ====================
 def _wav_header(sample_rate, channels, bits):
     byte_rate = sample_rate * channels * bits // 8
@@ -132,6 +211,7 @@ def _wav_header(sample_rate, channels, bits):
 
 @app.route("/stream")
 def audio_stream():
+    """Публичный поток — без @login_required, чтобы сотрудники могли слушать без пароля."""
     def generate():
         yield _wav_header(config.SAMPLE_RATE, config.CHANNELS, 16)
         silence = bytes(config.BLOCK_SIZE * 2)
@@ -169,7 +249,7 @@ def api_about():
         except Exception:
             pass
     return jsonify({
-        "version": "1.0.0",
+        "version": "1.1.0",
         "author": "Andrey Geben",
         "github": "https://github.com/andrey-geben/office_radio_overlay",
         "license": "MIT",
@@ -178,6 +258,36 @@ def api_about():
     })
 
 
+@app.route("/api/stream-url")
+@login_required
+def api_stream_url():
+    """Список URL, по которым можно слушать поток."""
+    import socket
+    urls = [
+        {"label": "Локально (этот ПК)", "url": "http://127.0.0.1:5000/stream"}
+    ]
+    try:
+        hostname = socket.gethostname()
+        for ip in socket.gethostbyname_ex(hostname)[2]:
+            if ip.startswith(("192.", "10.", "172.")) and not ip.startswith("127."):
+                urls.append({
+                    "label": "В офисе (LAN)",
+                    "url": f"http://{ip}:5000/stream",
+                })
+                break
+    except Exception:
+        pass
+    try:
+        urls.append({
+            "label": "По имени хоста",
+            "url": f"http://{socket.gethostname()}:5000/stream",
+        })
+    except Exception:
+        pass
+    return jsonify({"items": urls})
+
+
+# ==================== Управление движком ====================
 @app.route("/api/start", methods=["POST"])
 @admin_required
 def api_start():
@@ -260,8 +370,6 @@ def api_settings():
         return jsonify({"ok": True, "restarting": True, "settings": engine.get_settings()})
 
     return jsonify({"ok": True, "settings": engine.get_settings()})
-
-
 # ==================== Объявления ====================
 @app.route("/api/announcements", methods=["GET"])
 @login_required
@@ -342,7 +450,6 @@ def api_delete_schedule(ann_id, sched_id):
     ok = announcement_store.delete_schedule(ann_id, sched_id)
     return jsonify({"ok": ok})
 
-
 # ==================== Субтоны ====================
 @app.route("/api/scan_tone", methods=["POST"])
 @admin_required
@@ -422,6 +529,11 @@ def api_sip_save():
     transport = data.get("sip_transport", "udp")
     if transport not in ("udp", "tcp"):
         transport = "udp"
+    chime_enabled = bool(data.get("sip_chime_enabled", True))
+
+    ok, err = _validate_sip_domain(domain)
+    if not ok:
+        return jsonify({"ok": False, "error": err}), 400
 
     saved = settings_store.load()
     if not password:
@@ -430,7 +542,9 @@ def api_sip_save():
     settings_store.update(
         sip_domain=domain, sip_username=username, sip_password=password,
         sip_port=port, sip_transport=transport,
+        sip_chime_enabled=chime_enabled,
     )
+    engine.update_settings(sip_chime_enabled=chime_enabled)
     return jsonify({"ok": True})
 
 
@@ -438,6 +552,7 @@ def api_sip_save():
 @admin_required
 def api_sip_start():
     global sip_client
+
     data = request.get_json(silent=True) or {}
     domain = (data.get("sip_domain") or "").strip()
     username = (data.get("sip_username") or "").strip()
@@ -453,6 +568,10 @@ def api_sip_start():
     if not domain or not username:
         return jsonify({"ok": False, "error": "Заполните домен и логин"}), 400
 
+    ok, err = _validate_sip_domain(domain)
+    if not ok:
+        return jsonify({"ok": False, "error": err}), 400
+
     saved = settings_store.load()
     if not password:
         password = saved.get("sip_password", "")
@@ -464,19 +583,51 @@ def api_sip_start():
         sip_port=port, sip_transport=transport,
     )
 
+    # Уже работает — не перезапускаем (pjsua2 не любит повторную инициализацию)
     if sip_client is not None and sip_client.is_running():
-        sip_client.stop()
-        sip_client = None
+        return jsonify({
+            "ok": True,
+            "already_running": True,
+            "message": "SIP уже подключён. Для смены настроек нажмите «Отключить».",
+        })
 
+    # Сброс «залипшего» SIP-состояния
+    try:
+        engine.reset_sip_state()
+    except Exception:
+        pass
+
+    # Переиспользуем существующий клиент (Endpoint singleton в sip_client.py)
+    if sip_client is not None:
+        sip_client.domain = domain
+        sip_client.username = username
+        sip_client.password = password
+        sip_client.port = port
+        sip_client.transport = transport
+        ok = sip_client.start()
+        return jsonify({"ok": ok, "reused": True})
+
+    # Первый запуск — создаём клиент
     try:
         from sip_client import SipClient
     except ImportError as e:
         return jsonify({"ok": False, "error": f"pjsua2 не установлен: {e}"}), 500
 
-    sip_client = SipClient(engine, domain=domain, username=username,
-                           password=password, port=port, transport=transport)
+    # WMME dev_id для CABLE In 16ch (VB-Audio) — для микса SIP в линии.
+    # Из вашего list_wmme.py: CABLE In 16ch = WMME dev_id 6.
+    # Если у вас другой индекс — измените в панели «Устройство вывода PJSIP».
+    saved = settings_store.load()
+    playback_device = saved.get("sip_playback_device")
+    if playback_device is None:
+        playback_device = 6   # fallback: CABLE In 16ch по умолчанию
+
+    sip_client = SipClient(
+        engine, domain=domain, username=username,
+        password=password, port=port, transport=transport,
+        playback_device=playback_device,
+    )
     ok = sip_client.start()
-    return jsonify({"ok": ok})
+    return jsonify({"ok": ok, "settings": engine.get_settings()})
 
 
 @app.route("/api/sip/stop", methods=["POST"])
@@ -485,7 +636,9 @@ def api_sip_stop():
     global sip_client
     if sip_client is not None:
         sip_client.stop()
-        sip_client = None
+        # ВАЖНО: не обнуляем sip_client — Endpoint остаётся жив,
+        # при следующем start() переиспользуется.
+    engine.reset_sip_state()
     return jsonify({"ok": True})
 
 
@@ -504,7 +657,15 @@ def api_sip_status():
         "sip_transport": saved.get("sip_transport", "udp"),
         "auto_start_sip": saved.get("auto_start_sip", False),
         "auto_start_engine": saved.get("auto_start_engine", False),
+        "sip_chime_enabled": saved.get("sip_chime_enabled", True),
     })
+
+
+@app.route("/api/sip/test-chime", methods=["POST"])
+@admin_required
+def api_sip_test_chime():
+    result = engine.test_chime()
+    return jsonify(result)
 
 
 @app.route("/api/autostart", methods=["POST"])
@@ -516,8 +677,6 @@ def api_autostart():
         auto_start_sip=bool(data.get("auto_start_sip")),
     )
     return jsonify({"ok": True})
-
-
 # ==================== Пользователи ====================
 @app.route("/api/users", methods=["GET"])
 @admin_required
@@ -570,67 +729,20 @@ def api_reset_user_password(username):
     return jsonify({"ok": True})
 
 
-# ==================== Автозапуск при старте ====================
-def _boot_autostart():
-    saved = settings_store.load()
-    if saved.get("auto_start_engine"):
-        print("[boot] Автозапуск движка...")
-        try:
-            engine.start()
-        except Exception as e:
-            print(f"[boot] Ошибка автозапуска движка: {e}")
-
-    if saved.get("auto_start_sip") and saved.get("sip_domain") and saved.get("sip_username") and saved.get("sip_password"):
-        print("[boot] Автозапуск SIP...")
-        try:
-            from sip_client import SipClient
-            global sip_client
-            sip_client = SipClient(
-                engine,
-                domain=saved["sip_domain"],
-                username=saved["sip_username"],
-                password=saved["sip_password"],
-                port=saved.get("sip_port", 5060),
-                transport=saved.get("sip_transport", "udp"),
-            )
-            sip_client.start()
-        except Exception as e:
-            print(f"[boot] Ошибка автозапуска SIP: {e}")
-
-@app.route("/api/stream-url")
-@login_required
-def api_stream_url():
-    """Возвращает список URL, по которым можно слушать поток."""
-    import socket
-    urls = []
-
-    # localhost
-    urls.append({"label": "Локально (этот ПК)", "url": "http://127.0.0.1:5000/stream"})
-
-    # LAN IP
+# ==================== Запуск ====================
+if __name__ == '__main__':
+    # ... ваш запуск Flask ...
     try:
-        hostname = socket.gethostname()
-        for ip in socket.gethostbyname_ex(hostname)[2]:
-            if ip.startswith(("192.", "10.", "172.")) and not ip.startswith("127."):
-                urls.append({
-                    "label": "В офисе (LAN)",
-                    "url": f"http://{ip}:5000/stream",
-                })
-                break
-    except Exception:
+        app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+    except KeyboardInterrupt:
         pass
-
-    # Hostname (может работать, если DNS в офисе настроен)
-    try:
-        urls.append({
-            "label": "По имени хоста",
-            "url": f"http://{socket.gethostname()}:5000/stream",
-        })
-    except Exception:
-        pass
-
-    return jsonify({"items": urls})
-
-if __name__ == "__main__":
-    _boot_autostart()
-    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
+    finally:
+        try:
+            engine._hw_output.stop()
+        except Exception:
+            pass
+        try:
+            import sounddevice as sd
+            sd._terminate()
+        except Exception:
+            pass

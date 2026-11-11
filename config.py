@@ -2,9 +2,13 @@
 import os
 
 # --- Настройки аудио ---
-SAMPLE_RATE = 44100
+SAMPLE_RATE = 48000
 CHANNELS = 1
 BLOCK_SIZE = 1024
+
+# Плавное затухание радио при SIP-звонке
+SIP_DUCKING_LEVEL = 0.05   # 0.0 = полное выключение радио, 0.3 = смешение (радио тише)
+SIP_FADE_MS = 300         # плавное затухание за 300 мс
 
 # --- Источник входящего сигнала (по умолчанию) ---
 SOURCE_TYPE = "stream"                # "stream" или "device"
@@ -64,3 +68,8 @@ FALLBACK_ENABLED = False
 FALLBACK_TIMEOUT_SECONDS = 10
 FALLBACK_RETRY_MAIN_SECONDS = 60
 FALLBACK_SOURCES = []
+
+# --- SIP: сигнал внимания перед соединением ---
+SIP_CHIME_FILE = "assets/chime.wav"
+SIP_CHIME_ENABLED_DEFAULT = True
+SIP_CHIME_FADE_OUT_MS = 300     # затухание радио перед chime

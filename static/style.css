@@ -1072,7 +1072,7 @@ body {
 
 .evraz-console {
     display: grid;
-    grid-template-columns: 160px 1fr 160px;
+    grid-template-columns: 180px 1fr 180px;
     gap: 0;
     min-height: 100vh;
     width: 100%;
@@ -1105,49 +1105,70 @@ body {
 
 .speaker-cabinet {
     width: 100%;
-    max-width: 120px;
-    aspect-ratio: 1 / 2.2; /* вертикальный ящик */
+    max-width: 150px;
+    aspect-ratio: 1 / 3.0;                /* высокий напольник, как S90 */
     background: linear-gradient(180deg, #4a3a32, #1a1412);
     border: 3px solid #000;
     border-radius: 6px;
     box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
-    padding: 10px;
+    padding: 16px 12px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: space-evenly;
-    gap: 8px;
+    gap: 10px;
 }
 
-/* Твитер (верхний динамик) */
+/* Твитер (верхний — самый маленький) */
 .speaker-tweeter {
-    width: 40%;
+    width: 28%;
     aspect-ratio: 1;
     border-radius: 50%;
-    background: radial-gradient(circle at 35% 35%, #888, #222);
+    background: radial-gradient(circle at 35% 35%, #999, #222);
     border: 2px solid #000;
     box-shadow: inset 0 0 10px rgba(0,0,0,0.9);
+    flex-shrink: 0;
 }
 
-/* Вуфер (нижний динамик) */
+/* Среднечастотник (центральный, средний размер) */
+.speaker-mid {
+    width: 52%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #5a5a5a, #1a1a1a);
+    border: 2px solid #000;
+    box-shadow: inset 0 0 15px rgba(0,0,0,0.9);
+    position: relative;
+    flex-shrink: 0;
+}
+.speaker-mid::after {
+    content: "";
+    position: absolute;
+    inset: 28%;
+    border-radius: 50%;
+    background: radial-gradient(circle, #787878, #222);
+    border: 1px solid #000;
+}
+
+/* Вуфер (нижний — самый большой) */
 .speaker-woofer {
-    width: 80%;
+    width: 82%;
     aspect-ratio: 1;
     border-radius: 50%;
     background: radial-gradient(circle at 35% 35%, #444, #0a0a0a);
     border: 3px solid #000;
     box-shadow: inset 0 0 20px rgba(0,0,0,0.95);
     position: relative;
+    flex-shrink: 0;
 }
 .speaker-woofer::after {
     content: "";
     position: absolute;
-    inset: 30%;
+    inset: 28%;
     border-radius: 50%;
     background: radial-gradient(circle, #666, #111);
     border: 1px solid #000;
 }
-
 .speaker-badge {
     font-family: "Courier New", monospace;
     font-size: 0.65rem;
@@ -1615,6 +1636,15 @@ body {
     background: radial-gradient(circle at 35% 35%, #FFFFFF, #B0A99C);
     border-color: #6B6458;
     box-shadow: inset 0 0 10px rgba(0,0,0,0.3);
+}
+[data-theme="light"] .speaker-mid {
+    background: radial-gradient(circle at 35% 35%, #D8D2C4, #8B8478);
+    border-color: #6B6458;
+    box-shadow: inset 0 0 15px rgba(0,0,0,0.4);
+}
+[data-theme="light"] .speaker-mid::after {
+    background: radial-gradient(circle, #B0A99C, #6B6458);
+    border-color: #4A453E;
 }
 [data-theme="light"] .speaker-woofer {
     background: radial-gradient(circle at 35% 35%, #8B8478, #4A453E);
@@ -2096,5 +2126,160 @@ body {
     .stream-url-label {
         grid-column: 1 / -1;
         font-size: 0.7rem;
+    }
+}
+/* ===== Chime в исходящем потоке ===== */
+.output-flow-type.chime {
+    color: #d4a86a;
+    border-color: #a08040;
+    background: rgba(80, 60, 20, 0.3);
+    animation: pulse 0.8s infinite;
+}
+[data-theme="light"] .output-flow-type.chime {
+    color: #C4551F;
+    border-color: #EF7622;
+    background: #FFF3E0;
+}
+/* ===== LED на кнопке SIP (транспорт) ===== */
+.btn-sip-transport {
+    position: relative;
+}
+.btn-led {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #3a3a3a, #0a0a0a);
+    box-shadow: inset 0 -1px 2px rgba(0,0,0,0.9);
+    transition: all 0.2s;
+    pointer-events: none;
+}
+.btn-led.off {
+    background: radial-gradient(circle at 30% 30%, #5a5a5a, #0a0a0a);
+    box-shadow: inset 0 -1px 2px rgba(0,0,0,0.9);
+}
+.btn-led.idle {
+    background: radial-gradient(circle at 30% 30%, #7aff7a, #0f6b0f);
+    box-shadow: 0 0 8px rgba(120,255,120,0.85), inset 0 -1px 2px rgba(0,0,0,0.4);
+}
+.btn-led.call {
+    background: radial-gradient(circle at 30% 30%, #ff7a7a, #6b0f0f);
+    box-shadow: 0 0 12px rgba(255,120,120,0.95), inset 0 -1px 2px rgba(0,0,0,0.4);
+    animation: pulse 0.6s infinite;
+}
+
+/* ===== Полоска статуса SIP (над исходящим потоком) ===== */
+.sip-status-strip {
+    display: grid;
+    grid-template-columns: 20px 50px auto 1fr;
+    gap: 12px;
+    align-items: center;
+    padding: 8px 14px;
+    margin-top: 12px;
+    background: #0a0805;
+    border: 1px solid #2a1f14;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+.sip-status-strip.state-idle {
+    border-color: #1e6b1e;
+    background: linear-gradient(90deg, rgba(20,60,20,0.35), rgba(20,60,20,0.15));
+}
+.sip-status-strip.state-call {
+    border-color: #6b0f0f;
+    background: linear-gradient(90deg, rgba(80,20,20,0.4), rgba(80,20,20,0.15));
+    animation: pulse 1s infinite;
+}
+.sip-status-strip.state-off {
+    border-color: #2a1f14;
+    opacity: 0.85;
+}
+
+.sip-strip-led {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #5a5a5a, #0a0a0a);
+    box-shadow: inset 0 -2px 3px rgba(0,0,0,0.9);
+    transition: all 0.15s;
+}
+.sip-strip-led.off {
+    background: radial-gradient(circle at 30% 30%, #5a5a5a, #0a0a0a);
+}
+.sip-strip-led.idle {
+    background: radial-gradient(circle at 30% 30%, #7aff7a, #0f6b0f);
+    box-shadow: 0 0 12px rgba(120,255,120,0.8), inset 0 -2px 3px rgba(0,0,0,0.4);
+}
+.sip-strip-led.call {
+    background: radial-gradient(circle at 30% 30%, #ff7a7a, #6b0f0f);
+    box-shadow: 0 0 16px rgba(255,120,120,0.95), inset 0 -2px 3px rgba(0,0,0,0.4);
+    animation: pulse 0.6s infinite;
+}
+
+.sip-strip-label {
+    font-family: "Courier New", monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: #8a7048;
+}
+.state-idle .sip-strip-label { color: #3aa83a; }
+.state-call .sip-strip-label { color: #ef4444; }
+
+.sip-strip-text {
+    font-family: "Courier New", monospace;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #b89870;
+}
+.state-idle .sip-strip-text { color: #3aa83a; }
+.state-call .sip-strip-text { color: #ef4444; }
+.state-off .sip-strip-text { color: #6a5438; }
+
+.sip-strip-hint {
+    font-family: "Courier New", monospace;
+    font-size: 0.75rem;
+    color: #8a7048;
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ===== Светлая тема ===== */
+[data-theme="light"] .sip-status-strip {
+    background: #FFFFFF;
+    border-color: #D4CFC4;
+}
+[data-theme="light"] .sip-status-strip.state-idle {
+    border-color: #4A9A4A;
+    background: linear-gradient(90deg, #E8F5E8, #F5FBF5);
+}
+[data-theme="light"] .sip-status-strip.state-call {
+    border-color: #B82020;
+    background: linear-gradient(90deg, #FFE8E8, #FFF5F5);
+}
+[data-theme="light"] .sip-strip-label {
+    color: #8B4513;
+}
+[data-theme="light"] .state-idle .sip-strip-label { color: #2D6B2D; }
+[data-theme="light"] .state-call .sip-strip-label { color: #B82020; }
+[data-theme="light"] .sip-strip-text {
+    color: #4A4540;
+}
+[data-theme="light"] .sip-strip-hint {
+    color: #8B6B50;
+}
+
+@media (max-width: 720px) {
+    .sip-status-strip {
+        grid-template-columns: 16px 44px 1fr;
+        gap: 8px;
+        padding: 6px 10px;
+    }
+    .sip-strip-hint {
+        display: none;
     }
 }

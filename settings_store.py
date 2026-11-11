@@ -46,6 +46,7 @@ def _defaults():
         "sip_password": "",
         "sip_port": 5060,
         "sip_transport": "udp",
+        "sip_chime_enabled": config.SIP_CHIME_ENABLED_DEFAULT,
         # --- Автозапуск ---
         "auto_start_engine": False,
         "auto_start_sip": False,

@@ -1,4 +1,5 @@
 # engine.py
+import os
 import threading
 import time
 import math
@@ -78,6 +79,19 @@ class RadioOverlayEngine:
 
         self._sip_active = False
         self._sip_call = None
+
+        # --- Fade out/in при SIP (по времени, не по итерациям) ---
+        self._sip_gain_current = 1.0
+        self._chime_pump_thread = None
+        self._sip_gain_target = 1.0
+        self._sip_gain_start = 1.0  # gain на момент старта fade
+        self._sip_fade_start_time = 0.0  # когда начался fade
+
+        # --- Chime (сигнал внимания перед SIP) ---
+        self._chime_data = None
+        self._chime_active = False
+        self._chime_pos = 0
+        self._chime_call = None
 
         self._tone_events = collections.deque(maxlen=5000)
         self._total_ctcss = 0
@@ -169,22 +183,31 @@ class RadioOverlayEngine:
             "fallback_retry_main_seconds": saved.get("fallback_retry_main_seconds", config.FALLBACK_RETRY_MAIN_SECONDS),
             "fallback_sources": saved.get("fallback_sources", []),
             "dtmf_labels": saved.get("dtmf_labels", config.DTMF_DEFAULT_LABELS),
+            "sip_chime_enabled": saved.get("sip_chime_enabled", config.SIP_CHIME_ENABLED_DEFAULT),
         }
 
     # --- SIP ---
-    def enter_sip_mode(self, sip_call=None):
+    def enter_sip_mode(self):
         with self._lock:
+            was_active = self._sip_active
             self._sip_active = True
-            self._sip_call = sip_call
+            self._sip_call = None
             self._state["sip_active"] = True
+            # Если уже в SIP-режиме (после chime) — не сбрасываем fade
+            if not was_active:
+                self._sip_gain_start = self._sip_gain_current
+                self._sip_gain_target = config.SIP_DUCKING_LEVEL
+                self._sip_fade_start_time = time.time()
+            chime_playing = self._chime_active
         self._set_event("📞 SIP-звонок в эфире", force=True)
-        self._update_state(
-            output_type="sip",
-            output_name="SIP-звонок",
-            output_level_db=-90.0,
-            output_pos=None,
-            output_total=None,
-        )
+        if not chime_playing:
+            self._update_state(
+                output_type="sip",
+                output_name="SIP-звонок",
+                output_level_db=-90.0,
+                output_pos=None,
+                output_total=None,
+            )
         logger.info("Режим SIP включён.")
 
     def exit_sip_mode(self):
@@ -192,17 +215,280 @@ class RadioOverlayEngine:
             self._sip_active = False
             self._sip_call = None
             self._state["sip_active"] = False
+            self._sip_gain_start = self._sip_gain_current
+            self._sip_gain_target = 1.0
+            self._sip_fade_start_time = time.time()
         self._set_event("streaming", force=True)
         self._update_state(
             output_type="idle",
             output_name=None,
             output_level_db=-90.0,
+            output_pos=None,
+            output_total=None,
         )
         logger.info("Режим SIP выключен.")
+
+    def start_sip_chime(self, call=None):
+        """Возвращает True если можно играть/ответить, False если busy."""
+        with self._lock:
+            already_busy = self._sip_active or self._chime_active
+            chime_enabled = self._settings.get("sip_chime_enabled", True)
+
+        print(f"[SIP] start_sip_chime: busy={already_busy}, "
+              f"enabled={chime_enabled}")
+
+        if already_busy:
+            logger.warning("[SIP] Второй звонок — отклоняем")
+            return False
+
+        chime = self._load_chime() if chime_enabled else None
+        print(f"[SIP] chime data: "
+              f"{'загружен' if chime else 'НЕТ'} "
+              f"({len(chime) if chime else 0} байт)")
+
+        if chime is None:
+            # Без chime — sip_client сразу ответит 200
+            return True
+
+        with self._lock:
+            # ← ВАЖНО: запускаем SIP-режим УЖЕ СЕЙЧАС.
+            # Radio начнёт гаснуть со следующего чанка _run,
+            # ДО chime (chime играет через _apply_envelope с fade).
+            self._sip_active = True
+            self._sip_call = None
+            self._state["sip_active"] = True
+            self._sip_gain_start = self._sip_gain_current
+            self._sip_gain_target = config.SIP_DUCKING_LEVEL
+            self._sip_fade_start_time = time.time()
+
+            # Chime
+            self._chime_data = chime
+            self._chime_pos = 0
+            self._chime_active = True
+            self._chime_call = call
+            if self._ann_active:
+                self._ann_active = False
+                self._ann_pos = 0
+
+        # Сбрасываем накопленную очередь HW — чтобы chime пошёл СРАЗУ,
+
+        self._clear_output_queues()
+        self._spawn_chime_pump()
+        self._set_event("🔔 Входящий звонок — сигнал внимания", force=True)
+        self._update_state(
+            output_type="chime",
+            output_name="Сигнал внимания",
+            output_level_db=-90.0,
+            output_pos=0.0,
+            output_total=round(len(chime) / 2 / config.SAMPLE_RATE, 2),
+        )
+        return True
+
+    def is_chime_active(self):
+        with self._lock:
+            return self._chime_active
+
+    def cancel_chime(self):
+        """Отмена chime (например, звонок сброшен до конца chime)."""
+        was_active = False
+        with self._lock:
+            if self._chime_active:
+                was_active = True
+            self._chime_active = False
+            self._chime_pos = 0
+            self._chime_call = None
+        if was_active:
+            self._set_event("📞 Звонок отменён", force=True)
+            self._update_state(output_type="idle", output_name=None, output_level_db=-90.0)
+
+    def reset_sip_state(self):
+        """Принудительно сбрасывает SIP-состояние в idle.
+        Вызывается при старте SIP-клиента и при старте движка,
+        чтобы исключить «залипание» после сбоев."""
+        with self._lock:
+            self._sip_active = False
+            self._sip_call = None
+            self._chime_active = False
+            self._chime_pos = 0
+            self._chime_call = None
+            self._state["sip_active"] = False
+        self._update_state(
+            output_type="idle",
+            output_name=None,
+            output_level_db=-90.0,
+            output_pos=None,
+            output_total=None,
+        )
+        logger.info("[SIP] Состояние сброшено в idle.")
 
     def is_sip_active(self):
         with self._lock:
             return self._sip_active
+
+    # --- Chime / сигнал внимания ---
+    def _load_chime(self):
+        """Загружает chime-файл (WAV → PCM bytes). Кэширует."""
+        with self._lock:
+            if self._chime_data is not None:
+                return self._chime_data
+        path = config.SIP_CHIME_FILE
+        if not os.path.isabs(path):
+            path = os.path.join(settings_store.BASE_DIR, path)
+        if not os.path.exists(path):
+            logger.warning(f"Chime file not found: {path}")
+            return None
+        try:
+            import wave
+            with wave.open(path, "rb") as wf:
+                n_ch = wf.getnchannels()
+                sw = wf.getsampwidth()
+                sr = wf.getframerate()
+                frames = wf.readframes(wf.getnframes())
+            if sw == 2 and sr == config.SAMPLE_RATE and n_ch == config.CHANNELS:
+                data = frames
+            else:
+                from pydub import AudioSegment
+                audio = AudioSegment.from_file(path)
+                audio = audio.set_frame_rate(config.SAMPLE_RATE).set_channels(config.CHANNELS)
+                data = audio.raw_data
+            with self._lock:
+                self._chime_data = data
+            return data
+        except Exception as e:
+            logger.error(f"Failed to load chime: {e}")
+            return None
+
+    def test_chime(self):
+        """Проигрывает chime без SIP-звонка. Возвращает dict {"ok", "error"}."""
+        if not self._thread or not self._thread.is_alive():
+            return {"ok": False, "error": "Движок не запущен. Запустите трансляцию."}
+        chime = self._load_chime()
+        if chime is None:
+            return {"ok": False, "error": "Файл chime.wav не найден или повреждён."}
+        with self._lock:
+            if self._chime_active:
+                return {"ok": False, "error": "Сигнал уже воспроизводится."}
+            self._chime_data = chime
+            self._chime_pos = 0
+            self._chime_active = True
+            self._chime_call = None
+            if self._ann_active:
+                self._ann_active = False
+                self._ann_pos = 0
+
+        # ← Очищаем накопленный radio — chime пойдёт СРАЗУ
+            self._clear_output_queues()
+            self._spawn_chime_pump()
+            self._set_event("🔔 Тест сигнала внимания", force=True)
+            self._update_state(
+            output_type="chime",
+            output_name="Тест сигнала",
+            output_level_db=-90.0,
+            output_pos=0.0,
+            output_total=round(len(chime) / 2 / config.SAMPLE_RATE, 2),
+        )
+        return {"ok": True}
+    def _spawn_chime_pump(self):
+        """Запускает отдельный поток, который гонит chime в HW queue,
+        НЕ дожидаясь, пока _run проснётся от read() FFmpeg.
+        Только если ещё не запущен."""
+        t = self._chime_pump_thread
+        if t is not None and t.is_alive():
+            return
+        chunk_len = config.BLOCK_SIZE * config.CHANNELS * 2
+        silence = b"\x00" * chunk_len
+        sleep_s = chunk_len / 2 / config.SAMPLE_RATE  # ≈21 мс
+
+        def _pump():
+            while True:
+                with self._lock:
+                    if not self._chime_active:
+                        break
+                try:
+                    self._play_chime_chunk(silence)
+                except Exception as e:
+                    print(f"[CHIME-PUMP] error: {e}")
+                    break
+                time.sleep(sleep_s)
+
+        self._chime_pump_thread = threading.Thread(
+            target=_pump, daemon=True, name="chime-pump"
+        )
+        self._chime_pump_thread.start()
+
+    def _play_chime_chunk(self, radio_chunk):
+        """Играет chime вместо радио. Радио плавно гаснет до SIP_DUCKING_LEVEL."""
+        with self._lock:
+            chime = self._chime_data
+            pos = self._chime_pos
+
+        if pos == 0:
+            print(f"[CHIME] t={time.time():.3f} first chunk, "
+                  f"hw_q={self._hw_output._queue.qsize() if hasattr(self._hw_output, '_queue') else '?'}") #диагностика chime
+
+        if chime is None or pos >= len(chime):
+            self._finish_chime()
+            return
+
+        take = min(len(radio_chunk), len(chime) - pos)
+        chime_chunk = chime[pos:pos + take]
+        if take < len(radio_chunk):
+            chime_chunk = chime_chunk + b"\x00" * (len(radio_chunk) - take)
+
+        fade_out_s = int(config.SIP_CHIME_FADE_OUT_MS * config.SAMPLE_RATE / 1000)
+        out = _apply_envelope(
+            radio_chunk, chime_chunk,
+            pos // 2, len(chime) // 2,
+            fade_out_s, 0,
+            config.SIP_DUCKING_LEVEL,   # ← было 0.0, теперь 0.05
+        )
+
+        # Обновляем _sip_gain_current синхронно по времени,
+        # чтобы после chime не было скачка radio с 5% обратно до 100%
+        if self._sip_active:
+            fade_s = config.SIP_FADE_MS / 1000.0
+            elapsed = time.time() - self._sip_fade_start_time
+            if fade_s <= 0 or elapsed >= fade_s:
+                self._sip_gain_current = self._sip_gain_target
+            else:
+                t = elapsed / fade_s
+                self._sip_gain_current = (
+                    self._sip_gain_start
+                    + (self._sip_gain_target - self._sip_gain_start) * t
+                )
+
+        with self._lock:
+            self._chime_pos = pos + take
+
+        self._push_output(
+            out, "chime",
+            {
+                "output_name": "Сигнал внимания",
+                "output_pos": round(self._chime_pos / 2 / config.SAMPLE_RATE, 2),
+                "output_total": round(len(chime) / 2 / config.SAMPLE_RATE, 2),
+            },
+        )
+
+        if self._chime_pos >= len(chime):
+            self._finish_chime()
+
+    def _finish_chime(self):
+        """Chime закончился. sip_client сам отправит answer 200."""
+        with self._lock:
+            self._chime_active = False
+            self._chime_pos = 0
+            self._chime_call = None
+            sip_active = self._sip_active
+
+        if sip_active:
+            self._update_state(
+                output_type="sip",
+                output_name="SIP-звонок",
+                output_level_db=-90.0,
+                output_pos=None,
+                output_total=None,
+            )
+        self._update_state(last_event="streaming")
 
     # --- API ---
     def get_state(self):
@@ -282,6 +568,9 @@ class RadioOverlayEngine:
             pass
         return cleaned
 
+    def get_hw_output(self):
+        return self._hw_output
+
     def get_output_chunk(self, timeout=1.0):
         try:
             return self._output_queue.get(timeout=timeout)
@@ -355,6 +644,8 @@ class RadioOverlayEngine:
             self._playing_data = None
             self._playing_id = None
             self._playing_name = None
+            self._sip_active = False
+            self._sip_call = None
             self._tone_events.clear()
             self._total_ctcss = 0
             self._total_dcs = 0
@@ -383,7 +674,11 @@ class RadioOverlayEngine:
                 self._hw_output.start(hw_dev)
             except Exception as e:
                 logger.warning(f"Не удалось восстановить аппаратный выход: {e}")
-
+            # Предзагрузка chime (ускоряет реакцию на первый звонок)
+            try:
+                self._load_chime()
+            except Exception:
+                pass
         while True:
             try:
                 self._output_queue.get_nowait()
@@ -408,7 +703,11 @@ class RadioOverlayEngine:
             self._state["output_name"] = None
             self._state["output_pos"] = None
             self._state["output_total"] = None
+            self._chime_active = False
+            self._chime_pos = 0
+            self._chime_call = None
         self._set_event("stopped", force=True)
+
 
     # --- Внутреннее ---
     def _update_state(self, **kwargs):
@@ -521,6 +820,20 @@ class RadioOverlayEngine:
             while self._scan_buffer_size > self._scan_buffer_max and self._scan_buffer:
                 removed = self._scan_buffer.popleft()
                 self._scan_buffer_size -= len(removed)
+
+    def _clear_output_queues(self):
+        """Очищает output_queue и HW queue перед chime — чтобы chime
+        не встал в конец 4-6-секундного backlog'а."""
+        print(f"[CLEAR] t={time.time():.3f} clearing queues")
+        try:
+            self._hw_output.clear()
+        except Exception:
+            pass
+        try:
+            while True:
+                self._output_queue.get_nowait()
+        except queue.Empty:
+            pass
 
     def _push_output(self, chunk, output_type="radio", extra=None):
         if chunk is None:
@@ -845,8 +1158,41 @@ class RadioOverlayEngine:
             for chunk in self._stream_manager():
                 if self._stop_event.is_set():
                     break
-                if self._sip_active:
-                    time.sleep(0.02)
+                if self._chime_active:
+                    # chime играет chime_pump — независимо от read() FFmpeg.
+                    # _run только пропускает входящие чанки, чтобы не дублировать.
+                    time.sleep(0.005)
+                    # ← ОБЯЗАТЕЛЬНО: иначе chime
+                    # генерируется 50x быстрее, чем
+                    # HW успевает воспроизвести
+                    if self._chime_pos == 0:
+                        print(f"[CHIME] t={time.time():.3f} run-loop started chime") #диагностика chime
+                    continue
+
+                # --- Плавное затухание/возврат радио при SIP (по времени) ---
+                if self._sip_active or self._sip_gain_current != self._sip_gain_target:
+                    fade_s = config.SIP_FADE_MS / 1000.0
+                    elapsed = time.time() - self._sip_fade_start_time
+                    if fade_s <= 0 or elapsed >= fade_s:
+                        self._sip_gain_current = self._sip_gain_target
+                    else:
+                        t = elapsed / fade_s
+                        self._sip_gain_current = (
+                                self._sip_gain_start
+                                + (self._sip_gain_target - self._sip_gain_start) * t
+                        )
+
+                    if self._sip_gain_current <= 0.005:
+                        silence = b"\x00" * len(chunk)
+                        self._push_output(silence, "sip",
+                                          {"output_name": "SIP-звонок"})
+                    else:
+                        arr = np.frombuffer(chunk, dtype=np.int16).astype(np.float32)
+                        arr = arr * self._sip_gain_current
+                        arr = np.clip(arr, -32768, 32767).astype(np.int16)
+                        self._push_output(arr.tobytes(), "sip",
+                                          {"output_name": "SIP-звонок"})
+                    time.sleep(0.005)
                     continue
 
                 self._update_scan_buffer(chunk)
@@ -923,6 +1269,10 @@ class RadioOverlayEngine:
             logger.exception("Ошибка движка")
             self._update_state(error=str(e))
         finally:
+            with self._lock:
+                self._chime_active = False
+                self._chime_pos = 0
+                self._chime_call = None
             self._update_state(
                 running=False,
                 ctcss_detected=False,
