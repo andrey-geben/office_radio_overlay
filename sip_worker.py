@@ -1,25 +1,33 @@
 # sip_worker.py
 # Запускается как subprocess основным sip_client.py.
 # Общается через stdin/stdout — JSON-lines.
-# pjsua2 живёт ЗДЕСЬ, не в основном процессе.
 
+import os
 import sys
 import json
 import time
 import threading
 from queue import Queue, Empty
-import os
 
-# C-логи pjsua2 (printf) идут в fd 1 (stdout). Перенаправим fd 1 в stderr,
-# а наш JSON — через сохранённый dup fd 1.
-_ORIG_STDOUT_FD = os.dup(1)
-os.dup2(2, 1)   # теперь C-level stdout → stderr
+# Безопасное перенаправление fd 1 для pjsua2 C-логов.
+# В режиме PyInstaller --windowed fd 1/2 могут быть None или невалидными.
+_ORIG_STDOUT_FD = None
+try:
+    if sys.stdout is not None and hasattr(sys.stdout, "fileno"):
+        pass
+    _ORIG_STDOUT_FD = os.dup(1)
+    os.dup2(2, 1)
+except Exception:
+    pass
 
 # UTF-8 для русских символов
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8")
+try:
+    if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if sys.stderr is not None and hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass
 
 import pjsua2 as pj
 
@@ -31,6 +39,7 @@ _state = {
     "call": None,
     "playback_dev": None,
     "call_state": "idle",   # idle | incoming | confirmed
+    "running": True,
 }
 
 _cmd_queue = Queue()
@@ -38,6 +47,8 @@ _cmd_queue = Queue()
 
 def send(event, **kwargs):
     """Пишет JSON-строку в оригинальный stdout (fd, не буферизованный)."""
+    if _ORIG_STDOUT_FD is None:
+        return
     msg = {"event": event, **kwargs}
     try:
         data = (json.dumps(msg, ensure_ascii=False) + "\n").encode("utf-8")
@@ -48,17 +59,19 @@ def send(event, **kwargs):
 
 def log(text):
     try:
-        sys.stderr.write(f"[WORKER] {text}\n")
-        sys.stderr.flush()
+        if sys.stderr is not None:
+            sys.stderr.write(f"[WORKER] {text}\n")
+            sys.stderr.flush()
     except Exception:
         pass
 
 
-def _list_devices(ep, max_devices=20):
+def _list_devices(ep, max_devices=128):
     result = []
+    adm = ep.audDevManager()
     for idx in range(max_devices):
         try:
-            info = ep.audDevManager().getDevInfo(idx)
+            info = adm.getDevInfo(idx)
         except Exception:
             break
         try:
@@ -88,6 +101,7 @@ def _find_output_device(ep, name_substrings):
 class MyCall(pj.Call):
     def __init__(self, acc, call_id=pj.PJSUA_INVALID_ID):
         pj.Call.__init__(self, acc, call_id)
+        self._acc = acc
         self._connected = False
         self._media_transmitting = False
         self._play_dev_med = None
@@ -107,8 +121,11 @@ class MyCall(pj.Call):
             self._media_transmitting = False
             self._play_dev_med = None
             self._call_media = None
-            _state["call_state"] = "idle"
-            _state["call"] = None
+            if _state.get("call") is self:
+                _state["call_state"] = "idle"
+                _state["call"] = None
+            if self._acc is not None:
+                self._acc.remove_call(self)
 
     def onCallMediaState(self, prm):
         if self._media_transmitting:
@@ -137,11 +154,28 @@ class MyAccount(pj.Account):
         pj.Account.__init__(self)
         self._calls = []
 
+    def remove_call(self, call):
+        try:
+            self._calls.remove(call)
+        except ValueError:
+            pass
+
     def onRegState(self, prm):
         send("reg_state", code=int(prm.code), reason=str(prm.reason))
 
     def onIncomingCall(self, iprm):
         call = MyCall(self, iprm.callId)
+        # Если уже есть активный звонок — отклоняем новый (486 Busy Here),
+        # чтобы не смешивать два голоса и не копить зависшие вызовы.
+        if _state.get("call") is not None:
+            try:
+                prm = pj.CallOpParam()
+                prm.statusCode = 486
+                call.answer(prm)
+            except Exception:
+                pass
+            return
+
         self._calls.append(call)
         _state["call"] = call
         _state["call_state"] = "incoming"
@@ -192,16 +226,19 @@ def cmd_init(msg):
     for idx, name, in_c, out_c in _list_devices(ep):
         log(f"  dev_id={idx} '{name}' in={in_c} out={out_c}")
 
-    # Выбор playback: CABLE In → VoiceMeeter Aux
-    target = _find_output_device(ep, ["cable in"])
-    if target is None:
-        target = _find_output_device(ep, ["voicemeeter aux",
-                                          "voicemeeter vaio3"])
-    if target is None and msg.get("playback_device") is not None:
+    # Выбор playback: явно заданный dev_id -> CABLE In -> VoiceMeeter Aux
+    target = None
+    if msg.get("playback_device") is not None:
         try:
             target = int(msg["playback_device"])
         except Exception:
             target = None
+
+    if target is None:
+        target = _find_output_device(ep, ["cable in"])
+    if target is None:
+        target = _find_output_device(ep, ["voicemeeter aux",
+                                          "voicemeeter vaio3"])
 
     if target is not None:
         try:
@@ -215,7 +252,7 @@ def cmd_init(msg):
     else:
         log("playback: default (CABLE In / VM не найдены)")
 
-    # SPEAKER_ONLY — без микрофона (Ducking не срабатывает)
+    # SPEAKER_ONLY — без микрофона (Windows Ducking не приглушает системные звуки)
     try:
         ep.audDevManager().setSndDevMode(pj.PJSUA_SND_DEV_SPEAKER_ONLY)
         log("SPEAKER_ONLY")
@@ -266,14 +303,14 @@ def cmd_hangup(msg):
     if call is None:
         return
     try:
-        pj.Call.hangup(call, pj.CallOpParam())
+        call.hangup(pj.CallOpParam())
         send("hangup_sent")
     except Exception as e:
         send("error", where="hangup", error=str(e))
 
 
-def cmd_stop(msg):
-    log("stop")
+def _shutdown():
+    log("shutdown")
     acc = _state.get("account")
     if acc is not None:
         try:
@@ -281,6 +318,20 @@ def cmd_stop(msg):
             acc.delete()
         except Exception:
             pass
+        _state["account"] = None
+
+    ep = _state.get("ep")
+    if ep is not None:
+        try:
+            ep.libDestroy()
+        except Exception:
+            pass
+        _state["ep"] = None
+
+
+def cmd_stop(msg):
+    _state["running"] = False
+    _shutdown()
     send("stopped")
     sys.exit(0)
 
@@ -300,19 +351,25 @@ def main():
     send("ready")
 
     def _stdin_reader():
-        for line in sys.stdin:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                _cmd_queue.put(json.loads(line))
-            except Exception as e:
-                send("error", where="parse", error=str(e))
+        try:
+            if sys.stdin is not None:
+                for line in sys.stdin:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        _cmd_queue.put(json.loads(line))
+                    except Exception as e:
+                        send("error", where="parse", error=str(e))
+        except Exception:
+            pass
+        # Если stdin закрылся (родительский процесс упал или закрылся) — завершаем worker
+        _cmd_queue.put({"cmd": "stop"})
 
     t = threading.Thread(target=_stdin_reader, daemon=True)
     t.start()
 
-    while True:
+    while _state["running"]:
         # Разгребаем команды
         try:
             while True:

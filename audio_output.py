@@ -1,8 +1,9 @@
 # audio_output.py
-import sounddevice as sd
-import numpy as np
+import collections
 import threading
 import queue
+import numpy as np
+import sounddevice as sd
 import config
 
 
@@ -16,11 +17,50 @@ def _wasapi_index():
     return None
 
 
-# Попытка импортировать stateful-ресемплер (если понадобится)
 try:
     import soxr as _soxr
 except Exception:
     _soxr = None
+
+
+class _SampleRing:
+    """Лёгкий буфер int16-сэмплов на deque без постоянных реаллокаций np.concatenate."""
+
+    def __init__(self):
+        self._chunks = collections.deque()
+        self._head_offset = 0
+        self._total = 0
+
+    def __len__(self):
+        return self._total
+
+    def clear(self):
+        self._chunks.clear()
+        self._head_offset = 0
+        self._total = 0
+
+    def append(self, arr):
+        if arr is not None and len(arr) > 0:
+            self._chunks.append(arr)
+            self._total += len(arr)
+
+    def pop(self, n):
+        if n <= 0 or self._total < n:
+            return None
+        out = np.empty(n, dtype=np.int16)
+        written = 0
+        while written < n and self._chunks:
+            head = self._chunks[0]
+            avail = len(head) - self._head_offset
+            take = min(avail, n - written)
+            out[written:written + take] = head[self._head_offset:self._head_offset + take]
+            written += take
+            self._head_offset += take
+            self._total -= take
+            if self._head_offset >= len(head):
+                self._chunks.popleft()
+                self._head_offset = 0
+        return out
 
 
 class HardwareOutput:
@@ -29,7 +69,7 @@ class HardwareOutput:
     def __init__(self):
         self._device = None
         self._stream = None
-        self._queue = queue.Queue(maxsize=30) # ~0.6 сек буфер (было 200 = 4.2 сек)
+        self._queue = queue.Queue(maxsize=30)  # ~0.6 сек буфер
         self._running = False
         self._thread = None
         self._lock = threading.Lock()
@@ -39,25 +79,35 @@ class HardwareOutput:
 
     @staticmethod
     def list_output_devices():
-        result = []
         try:
             wasapi = _wasapi_index()
             default_out = sd.default.device[1]
-            for idx, dev in enumerate(sd.query_devices()):
-                if dev.get("max_output_channels", 0) <= 0:
-                    continue
-                if wasapi is not None and dev.get("hostapi") != wasapi:
-                    continue
-                result.append({
-                    "index": idx,
-                    "name": dev["name"],
-                    "channels": int(dev["max_output_channels"]),
-                    "hostapi": dev.get("hostapi"),
-                    "is_default": idx == default_out,
-                })
+            all_devs = sd.query_devices()
+
+            def _collect(hostapi_filter):
+                items = []
+                for idx, dev in enumerate(all_devs):
+                    if dev.get("max_output_channels", 0) <= 0:
+                        continue
+                    if hostapi_filter is not None and dev.get("hostapi") != hostapi_filter:
+                        continue
+                    items.append({
+                        "index": idx,
+                        "name": dev["name"],
+                        "channels": int(dev["max_output_channels"]),
+                        "hostapi": dev.get("hostapi"),
+                        "is_default": idx == default_out,
+                    })
+                return items
+
+            # Предпочитаем WASAPI; если на Windows 7 / Server их 0 — берём все API
+            result = _collect(wasapi) if wasapi is not None else []
+            if not result:
+                result = _collect(None)
+            return result
         except Exception as e:
             print(f"Ошибка получения выходных устройств: {e}")
-        return result
+            return []
 
     def start(self, device_index=None):
         self.stop()
@@ -123,7 +173,6 @@ class HardwareOutput:
             drv = 0.0
         return q_sec + drv
 
-
     def push(self, chunk_bytes):
         if chunk_bytes is None:
             return
@@ -147,21 +196,23 @@ class HardwareOutput:
         with self._lock:
             return self._device
 
-    def _run(self):
-        block = config.BLOCK_SIZE
-        stream = None
+    def _open_stream_with_fallback(self, block):
+        """Пробует открыть поток: WASAPI (auto_convert) -> WASAPI -> MME/DirectSound."""
+        settings_candidates = []
+        if _wasapi_index() is not None:
+            try:
+                settings_candidates.append(
+                    sd.WasapiSettings(exclusive=False, auto_convert=True)
+                )
+            except Exception:
+                pass
+            try:
+                settings_candidates.append(sd.WasapiSettings(exclusive=False))
+            except Exception:
+                pass
+        settings_candidates.append(None)
 
-        # --- WASAPI settings: shared mode + auto convert ---
-        wasapi_settings = None
-        try:
-            wasapi_settings = sd.WasapiSettings(
-                exclusive=False,
-                auto_convert=True,
-            )
-        except Exception as e:
-            print(f"[HW] WasapiSettings: {e}")
-
-        # ВАЖНО: 48000 первым — CABLE Input (VB-Audio) не принимает 44100.
+        # 48000 первым — CABLE Input (VB-Audio) и большинство карт работают на 48 кГц
         attempts = [
             (48000, config.CHANNELS),
             (48000, 2),
@@ -171,10 +222,10 @@ class HardwareOutput:
             (None, 2),
         ]
 
-        try:
+        for extra in settings_candidates:
             for sr, ch in attempts:
                 if not self._running:
-                    return
+                    return None
                 try:
                     stream = sd.OutputStream(
                         device=self._device,
@@ -183,97 +234,92 @@ class HardwareOutput:
                         dtype="int16",
                         blocksize=block,
                         latency=0.05,
-                        extra_settings=wasapi_settings,
+                        extra_settings=extra,
                     )
                     stream.start()
-                    try:
-                        print(f"[HW] stream.latency={stream.latency:.3f} сек")
-                    except Exception:
-                        pass
-                    with self._lock:
-                        self._stream = stream
-                        self._actual_sr = int(stream.samplerate)
-                        self._actual_ch = int(stream.channels)
-                    print(f"[HW] OutputStream открыт: "
-                          f"{self._actual_sr}Гц, {self._actual_ch}ch")
-                    try:
-                        dev_name = (sd.query_devices(self._device)["name"]
-                                    if self._device is not None
-                                    else sd.query_devices(kind="output")["name"])
-                    except Exception:
-                        dev_name = "?"
-                    print(f"[HW]   → устройство: '{dev_name}'")
-                    break
-                except Exception as e:
-                    print(f"[HW] Попытка {sr}Гц / {ch}ch не удалась: {e}")
-                    stream = None
+                    return stream
+                except Exception:
                     continue
+        return None
 
+    def _run(self):
+        block = config.BLOCK_SIZE
+        stream = None
+
+        try:
+            stream = self._open_stream_with_fallback(block)
             if stream is None:
-                print("[HW] Не удалось открыть ни одну комбинацию")
+                print("[HW] Не удалось открыть ни одну комбинацию аудиовыхода")
                 return
+
+            with self._lock:
+                self._stream = stream
+                self._actual_sr = int(stream.samplerate)
+                self._actual_ch = int(stream.channels)
+
+            try:
+                dev_name = (
+                    sd.query_devices(self._device)["name"]
+                    if self._device is not None
+                    else sd.query_devices(kind="output")["name"]
+                )
+            except Exception:
+                dev_name = "?"
+
+            print(
+                f"[HW] OutputStream открыт: {self._actual_sr}Гц, "
+                f"{self._actual_ch}ch -> '{dev_name}'"
+            )
 
             out_sr = self._actual_sr
             out_ch = self._actual_ch
             needs_resample = (out_sr != config.SAMPLE_RATE)
 
-            # Правильный потоковый ресемплер (stateful). soxr предпочтителен.
             resampler = None
             if needs_resample:
                 if _soxr is None:
-                    print(f"[HW] WARNING: SAMPLE_RATE={config.SAMPLE_RATE} != "
-                          f"device {out_sr}. Установите `pip install soxr` "
-                          f"ИЛИ смените SAMPLE_RATE=48000 в config.py. "
-                          f"Без soxr будут щелчки на каждом блоке.")
+                    print(
+                        f"[HW] WARNING: SAMPLE_RATE={config.SAMPLE_RATE} != "
+                        f"device {out_sr}. Установите `pip install soxr` "
+                        f"ИЛИ смените SAMPLE_RATE=48000 в config.py."
+                    )
                 else:
                     resampler = _soxr.ResampleStream(
-                        config.SAMPLE_RATE, out_sr, 1, dtype='int16'
+                        config.SAMPLE_RATE, out_sr, 1, dtype="int16"
                     )
 
-            # Ожидаемое количество входных сэмплов на один выходной блок
             if needs_resample:
-                block_in = max(1, int(round(
-                    block * config.SAMPLE_RATE / out_sr
-                )))
+                block_in = max(1, int(round(block * config.SAMPLE_RATE / out_sr)))
             else:
                 block_in = block
 
             silence_in = np.zeros(block_in, dtype=np.int16)
-            pending_in = np.array([], dtype=np.int16)
-            pending_out = np.array([], dtype=np.int16)
+            ring_in = _SampleRing()
+            ring_out = _SampleRing()
 
             while self._running:
-                # 1) Забираем из очереди
                 if self._flush_requested:
                     self._flush_requested = False
-                    pending_in = np.array([], dtype=np.int16)
-                    pending_out = np.array([], dtype=np.int16)
+                    ring_in.clear()
+                    ring_out.clear()
+
                 while True:
                     try:
                         raw = self._queue.get_nowait()
                         arr = np.frombuffer(raw, dtype=np.int16)
-                        if len(arr) > 0:
-                            if len(pending_in):
-                                pending_in = np.concatenate([pending_in, arr])
-                            else:
-                                pending_in = arr
+                        ring_in.append(arr)
                     except queue.Empty:
                         break
 
-                # 2) Производим блоки выхода
-                while len(pending_out) < block and self._running:
-                    if len(pending_in) < block_in:
-                        pad = silence_in[:block_in - len(pending_in)]
-                        if len(pending_in):
-                            pending_in = np.concatenate([pending_in, pad])
-                        else:
-                            pending_in = pad
+                while len(ring_out) < block and self._running:
+                    if len(ring_in) < block_in:
+                        ring_in.append(silence_in[: block_in - len(ring_in)])
 
-                    chunk_in = pending_in[:block_in]
-                    pending_in = pending_in[block_in:]
+                    chunk_in = ring_in.pop(block_in)
+                    if chunk_in is None:
+                        break
 
                     if needs_resample and resampler is not None:
-                        # Stateful — без фейдов на границах
                         rs = resampler.resample_chunk(chunk_in)
                         rs = np.clip(rs, -32768, 32767).astype(np.int16)
                     else:
@@ -284,15 +330,12 @@ class HardwareOutput:
                     elif len(rs) > block:
                         rs = rs[:block]
 
-                    if len(pending_out):
-                        pending_out = np.concatenate([pending_out, rs])
-                    else:
-                        pending_out = rs
+                    ring_out.append(rs)
 
-                # 3) Отдаём в устройство
-                while len(pending_out) >= block and self._running:
-                    chunk = pending_out[:block]
-                    pending_out = pending_out[block:]
+                while len(ring_out) >= block and self._running:
+                    chunk = ring_out.pop(block)
+                    if chunk is None:
+                        break
                     if out_ch == 2 and chunk.ndim == 1:
                         chunk = np.repeat(chunk, 2)
                     try:
@@ -307,6 +350,7 @@ class HardwareOutput:
             print(f"Ошибка аппаратного выхода: {e}")
         finally:
             with self._lock:
+                self._running = False
                 s = self._stream
                 self._stream = None
             if s is not None:

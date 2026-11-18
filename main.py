@@ -1,13 +1,18 @@
 # main.py
 import os
 import sys
+
+# --- Инициализация логирования (до всех остальных импортов) ---
+from logging_setup import setup_logging
+setup_logging()
+
 # --- Frozen mode: этот же .exe запущен как SIP-worker ---
-# Должно быть ДО импортов preflight/Flask/engine — worker не нуждается в них.
 if "--sip-worker" in sys.argv:
     from sip_worker import main as sip_worker_main
     sip_worker_main()
     sys.exit(0)
 
+import atexit
 import preflight
 import time
 import threading
@@ -53,11 +58,36 @@ sip_client = None
 users_store.ensure_default_admin()
 
 
+def _cleanup_on_exit():
+    global sip_client
+    try:
+        if sip_client is not None:
+            sip_client.stop()
+            sip_client = None
+    except Exception:
+        pass
+    try:
+        engine.stop()
+    except Exception:
+        pass
+    try:
+        engine._hw_output.stop()
+    except Exception:
+        pass
+    try:
+        import sounddevice as sd
+        sd._terminate()
+    except Exception:
+        pass
+
+
+atexit.register(_cleanup_on_exit)
+
+
 def _validate_sip_domain(domain):
     """Проверяет IP-адрес или hostname. Возвращает (ok, error_message)."""
     if not domain:
         return False, "SIP-домен не указан"
-    # Похоже на IP? Тогда проверяем строго
     if domain.count(".") >= 2 and domain.replace(".", "").isdigit():
         try:
             import ipaddress
@@ -68,7 +98,6 @@ def _validate_sip_domain(domain):
                 f"'{domain}' похоже на IP-адрес, но не является валидным. "
                 f"Каждый октет должен быть 0–255. Проверьте: ping {domain}"
             )
-    # Hostname — пропускаем
     return True, None
 
 
@@ -80,9 +109,10 @@ def _ensure_chime():
             chime_path = os.path.join(settings_store.BASE_DIR, chime_path)
         if os.path.exists(chime_path):
             return
+        os.makedirs(os.path.dirname(chime_path), exist_ok=True)
         from make_chime import generate_chime
         n = generate_chime(chime_path, sample_rate=config.SAMPLE_RATE)
-        print(f"[boot] Сгенерирован сигнал внимания: {chime_path} ({n/44100:.2f}с)")
+        print(f"[boot] Сгенерирован сигнал внимания: {chime_path} ({n / config.SAMPLE_RATE:.2f}с)")
     except Exception as e:
         print(f"[boot] Не удалось сгенерировать chime: {e}")
 
@@ -109,9 +139,8 @@ def _boot_autostart():
             except Exception:
                 pass
 
+            # None -> sip_worker сам найдёт CABLE In / VoiceMeeter по имени
             playback_device = saved.get("sip_playback_device")
-            if playback_device is None:
-                playback_device = 6
 
             sip_client = SipClient(
                 engine,
@@ -205,6 +234,8 @@ def index():
         username=session.get("username", "?"),
         role=session.get("role", "operator"),
     )
+
+
 # ==================== HTTP-стрим ====================
 def _wav_header(sample_rate, channels, bits):
     byte_rate = sample_rate * channels * bits // 8
@@ -248,7 +279,9 @@ def api_status():
 @app.route("/api/about")
 @login_required
 def api_about():
-    readme_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "README.md")
+    readme_path = _resource_path("README.md")
+    if not os.path.exists(readme_path):
+        readme_path = os.path.join(settings_store.BASE_DIR, "README.md")
     readme_md = ""
     if os.path.exists(readme_path):
         try:
@@ -265,6 +298,24 @@ def api_about():
         "readme_md": readme_md,
     })
 
+@app.route("/api/logs")
+@admin_required
+def api_logs():
+    """Возвращает последние N строк лога (только для админа)."""
+    import os
+    from logging_setup import LOG_FILE
+
+    n = int(request.args.get("n", 200))
+    if not os.path.exists(LOG_FILE):
+        return jsonify({"ok": False, "error": "Файл лога не найден"})
+
+    try:
+        with open(LOG_FILE, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+        tail = lines[-n:]
+        return jsonify({"ok": True, "lines": tail, "total": len(lines)})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 @app.route("/api/stream-url")
 @login_required
@@ -378,6 +429,8 @@ def api_settings():
         return jsonify({"ok": True, "restarting": True, "settings": engine.get_settings()})
 
     return jsonify({"ok": True, "settings": engine.get_settings()})
+
+
 # ==================== Объявления ====================
 @app.route("/api/announcements", methods=["GET"])
 @login_required
@@ -457,6 +510,7 @@ def api_upsert_schedule(ann_id):
 def api_delete_schedule(ann_id, sched_id):
     ok = announcement_store.delete_schedule(ann_id, sched_id)
     return jsonify({"ok": ok})
+
 
 # ==================== Субтоны ====================
 @app.route("/api/scan_tone", methods=["POST"])
@@ -591,7 +645,6 @@ def api_sip_start():
         sip_port=port, sip_transport=transport,
     )
 
-    # Уже работает — не перезапускаем (pjsua2 не любит повторную инициализацию)
     if sip_client is not None and sip_client.is_running():
         return jsonify({
             "ok": True,
@@ -599,35 +652,27 @@ def api_sip_start():
             "message": "SIP уже подключён. Для смены настроек нажмите «Отключить».",
         })
 
-    # Сброс «залипшего» SIP-состояния
     try:
         engine.reset_sip_state()
     except Exception:
         pass
 
-    # Переиспользуем существующий клиент (Endpoint singleton в sip_client.py)
+    playback_device = saved.get("sip_playback_device")
+
     if sip_client is not None:
         sip_client.domain = domain
         sip_client.username = username
         sip_client.password = password
         sip_client.port = port
         sip_client.transport = transport
+        sip_client.playback_device = playback_device
         ok = sip_client.start()
         return jsonify({"ok": ok, "reused": True})
 
-    # Первый запуск — создаём клиент
     try:
         from sip_client import SipClient
     except ImportError as e:
         return jsonify({"ok": False, "error": f"pjsua2 не установлен: {e}"}), 500
-
-    # WMME dev_id для CABLE In 16ch (VB-Audio) — для микса SIP в линии.
-    # Из вашего list_wmme.py: CABLE In 16ch = WMME dev_id 6.
-    # Если у вас другой индекс — измените в панели «Устройство вывода PJSIP».
-    saved = settings_store.load()
-    playback_device = saved.get("sip_playback_device")
-    if playback_device is None:
-        playback_device = 6   # fallback: CABLE In 16ch по умолчанию
 
     sip_client = SipClient(
         engine, domain=domain, username=username,
@@ -644,8 +689,6 @@ def api_sip_stop():
     global sip_client
     if sip_client is not None:
         sip_client.stop()
-        # ВАЖНО: не обнуляем sip_client — Endpoint остаётся жив,
-        # при следующем start() переиспользуется.
     engine.reset_sip_state()
     return jsonify({"ok": True})
 
@@ -685,6 +728,8 @@ def api_autostart():
         auto_start_sip=bool(data.get("auto_start_sip")),
     )
     return jsonify({"ok": True})
+
+
 # ==================== Пользователи ====================
 @app.route("/api/users", methods=["GET"])
 @admin_required
@@ -736,6 +781,7 @@ def api_reset_user_password(username):
         return jsonify({"ok": False, "error": str(e)}), 400
     return jsonify({"ok": True})
 
+
 @app.route("/api/preflight")
 def api_preflight():
     from preflight import get_last_results, CRITICAL, WARNING
@@ -745,32 +791,84 @@ def api_preflight():
         "warnings": [m for s, m in results if s == WARNING],
     })
 
+
 # ==================== Запуск ====================
-if __name__ == '__main__':
-    # 1) Проверка компонентов
+
+# ==================== Автооткрытие браузера ====================
+APP_HOST = os.environ.get("APP_HOST", "0.0.0.0")
+APP_PORT = int(os.environ.get("APP_PORT", "5000"))
+
+
+def _browser_url():
+    """Адрес, который открываем: BROWSER_URL → env APP_URL → localhost."""
+    url = os.environ.get("APP_URL") or getattr(config, "BROWSER_URL", None)
+    if url:
+        return url
+    return f"http://127.0.0.1:{APP_PORT}/"
+
+
+def _browser_autostart_enabled():
+    """Приоритет: переменная окружения → settings.json → config.py."""
+    env = os.environ.get("AUTO_OPEN_BROWSER", "").strip().lower()
+    if env in ("0", "false", "no", "off"):
+        return False
+    if env in ("1", "true", "yes", "on"):
+        return True
+    try:
+        saved = settings_store.load()
+        if "auto_open_browser" in saved:
+            return bool(saved["auto_open_browser"])
+    except Exception:
+        pass
+    return bool(getattr(config, "AUTO_OPEN_BROWSER", True))
+
+
+def _wait_for_server(port=APP_PORT, timeout=20.0):
+    """Ждём, пока Flask реально начнёт принимать соединения."""
+    import socket
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+                return True
+        except OSError:
+            time.sleep(0.3)
+    return False
+
+
+def _open_browser_when_ready():
+    if not _wait_for_server():
+        print("[BOOT] сервер не поднялся — браузер не открываю")
+        return
+    url = _browser_url()
+    try:
+        import webbrowser
+        webbrowser.open(url)
+        print(f"[BOOT] открыт браузер: {url}")
+    except Exception as e:
+        print(f"[BOOT] не удалось открыть браузер: {e}")
+
+
+if __name__ == "__main__":
+    _ensure_chime()
     results = preflight.run_checks()
-    # 2) Показать пользователю (только critical/warning или при первом запуске)
     saved = settings_store.load()
     first_run = not saved.get("preflight_done", False)
     ok = preflight.report_to_user(results, first_run=first_run)
     if not ok:
-        # Critical — выходим
         sys.exit(1)
-    # Запомнить, что первая проверка пройдена
     if first_run:
         settings_store.update(preflight_done=True)
-    # ... ваш запуск Flask ...
+
+    _boot_autostart()
+
+    # Автооткрытие браузера — в отдельном потоке, чтобы не блокировать Flask
+    if _browser_autostart_enabled():
+        threading.Timer(1.0, _open_browser_when_ready).start()
+
     try:
-        app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+        app.run(host=APP_HOST, port=APP_PORT, debug=False, threaded=True)
     except KeyboardInterrupt:
         pass
     finally:
-        try:
-            engine._hw_output.stop()
-        except Exception:
-            pass
-        try:
-            import sounddevice as sd
-            sd._terminate()
-        except Exception:
-            pass
+        _cleanup_on_exit()

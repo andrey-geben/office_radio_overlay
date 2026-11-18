@@ -10,7 +10,7 @@ import numpy as np
 import psutil
 
 import audio_capture
-from audio_capture import stream_audio, stream_audio_chunks
+from audio_capture import stream_audio_chunks, stop_active_ffmpeg
 from tone_detector import detect_all, scan_ctcss_frequencies
 from dtmf_detector import DTMFDetector
 from mixer import load_announcement
@@ -22,6 +22,43 @@ import config
 logger = logging.getLogger(__name__)
 
 SPECTRUM_BANDS = 24
+_SPECTRUM_CACHE = {}
+
+
+def _get_spectrum_plan(n_fft, sr):
+    key = (n_fft, sr)
+    plan = _SPECTRUM_CACHE.get(key)
+    if plan is not None:
+        return plan
+    window = np.hanning(n_fft).astype(np.float32)
+    nyquist = sr / 2.0
+    freqs = np.fft.rfftfreq(n_fft, 1.0 / sr)
+    f_min = 40.0
+    f_max = min(nyquist, 16000.0)
+    if f_max <= f_min:
+        return None
+    log_ratio = math.log(f_max / f_min)
+    bins = []
+    for i in range(SPECTRUM_BANDS):
+        f_lo = f_min * math.exp(log_ratio * i / SPECTRUM_BANDS)
+        f_hi = f_min * math.exp(log_ratio * (i + 1) / SPECTRUM_BANDS)
+        idx_lo = int(np.searchsorted(freqs, f_lo, side="left"))
+        idx_hi = int(np.searchsorted(freqs, f_hi, side="right"))
+        if idx_hi <= idx_lo:
+            idx_hi = min(idx_lo + 1, len(freqs))
+        tilt = 1.0 + (i / SPECTRUM_BANDS) * 4.0
+        bins.append((idx_lo, idx_hi, tilt))
+    plan = (window, bins)
+    _SPECTRUM_CACHE[key] = plan
+    return plan
+
+
+def _drain_queue(q):
+    while True:
+        try:
+            q.get_nowait()
+        except queue.Empty:
+            break
 
 
 def _apply_envelope(radio_chunk, ann_chunk, pos_samples, total_samples,
@@ -77,22 +114,16 @@ class RadioOverlayEngine:
         self._playing_id = None
         self._playing_name = None
 
+        # --- SIP / chime ---
         self._sip_active = False
         self._sip_call = None
 
-        # --- Fade out/in при SIP (по времени, не по итерациям) ---
-        self._sip_gain_current = 1.0
-        self._chime_pump_thread = None
-        self._sip_gain_target = 1.0
-        self._sip_gain_start = 1.0  # gain на момент старта fade
-        self._sip_fade_start_time = 0.0  # когда начался fade
-
-        # --- Chime (сигнал внимания перед SIP) ---
         self._chime_data = None
         self._chime_active = False
         self._chime_pos = 0
         self._chime_call = None
 
+        # --- Статистика сработок ---
         self._tone_events = collections.deque(maxlen=5000)
         self._total_ctcss = 0
         self._total_dcs = 0
@@ -109,8 +140,10 @@ class RadioOverlayEngine:
         self._spectrum_last = 0.0
         self._output_last_update = 0.0
 
+        # --- Очереди ---
         self._output_queue = queue.Queue(maxsize=config.STREAM_QUEUE_SIZE)
 
+        # --- Буфер для сканера субтонов ---
         self._scan_buffer = collections.deque()
         self._scan_buffer_size = 0
         self._scan_buffer_max = int(config.SAMPLE_RATE * 3)
@@ -186,18 +219,20 @@ class RadioOverlayEngine:
             "sip_chime_enabled": saved.get("sip_chime_enabled", config.SIP_CHIME_ENABLED_DEFAULT),
         }
 
-    # --- SIP ---
-    def enter_sip_mode(self):
+    # ==================== SIP ====================
+
+    def get_hw_output(self):
+        return self._hw_output
+
+    def is_chime_active(self):
         with self._lock:
-            was_active = self._sip_active
+            return self._chime_active
+
+    def enter_sip_mode(self, sip_call=None):
+        with self._lock:
             self._sip_active = True
-            self._sip_call = None
+            self._sip_call = sip_call
             self._state["sip_active"] = True
-            # Если уже в SIP-режиме (после chime) — не сбрасываем fade
-            if not was_active:
-                self._sip_gain_start = self._sip_gain_current
-                self._sip_gain_target = config.SIP_DUCKING_LEVEL
-                self._sip_fade_start_time = time.time()
             chime_playing = self._chime_active
         self._set_event("📞 SIP-звонок в эфире", force=True)
         if not chime_playing:
@@ -215,96 +250,16 @@ class RadioOverlayEngine:
             self._sip_active = False
             self._sip_call = None
             self._state["sip_active"] = False
-            self._sip_gain_start = self._sip_gain_current
-            self._sip_gain_target = 1.0
-            self._sip_fade_start_time = time.time()
         self._set_event("streaming", force=True)
         self._update_state(
             output_type="idle",
             output_name=None,
             output_level_db=-90.0,
-            output_pos=None,
-            output_total=None,
         )
         logger.info("Режим SIP выключен.")
 
-    def start_sip_chime(self, call=None):
-        """Возвращает True если можно играть/ответить, False если busy."""
-        with self._lock:
-            already_busy = self._sip_active or self._chime_active
-            chime_enabled = self._settings.get("sip_chime_enabled", True)
-
-        print(f"[SIP] start_sip_chime: busy={already_busy}, "
-              f"enabled={chime_enabled}")
-
-        if already_busy:
-            logger.warning("[SIP] Второй звонок — отклоняем")
-            return False
-
-        chime = self._load_chime() if chime_enabled else None
-        print(f"[SIP] chime data: "
-              f"{'загружен' if chime else 'НЕТ'} "
-              f"({len(chime) if chime else 0} байт)")
-
-        if chime is None:
-            # Без chime — sip_client сразу ответит 200
-            return True
-
-        with self._lock:
-            # ← ВАЖНО: запускаем SIP-режим УЖЕ СЕЙЧАС.
-            # Radio начнёт гаснуть со следующего чанка _run,
-            # ДО chime (chime играет через _apply_envelope с fade).
-            self._sip_active = True
-            self._sip_call = None
-            self._state["sip_active"] = True
-            self._sip_gain_start = self._sip_gain_current
-            self._sip_gain_target = config.SIP_DUCKING_LEVEL
-            self._sip_fade_start_time = time.time()
-
-            # Chime
-            self._chime_data = chime
-            self._chime_pos = 0
-            self._chime_active = True
-            self._chime_call = call
-            if self._ann_active:
-                self._ann_active = False
-                self._ann_pos = 0
-
-        # Сбрасываем накопленную очередь HW — чтобы chime пошёл СРАЗУ,
-
-        self._clear_output_queues()
-        self._spawn_chime_pump()
-        self._set_event("🔔 Входящий звонок — сигнал внимания", force=True)
-        self._update_state(
-            output_type="chime",
-            output_name="Сигнал внимания",
-            output_level_db=-90.0,
-            output_pos=0.0,
-            output_total=round(len(chime) / 2 / config.SAMPLE_RATE, 2),
-        )
-        return True
-
-    def is_chime_active(self):
-        with self._lock:
-            return self._chime_active
-
-    def cancel_chime(self):
-        """Отмена chime (например, звонок сброшен до конца chime)."""
-        was_active = False
-        with self._lock:
-            if self._chime_active:
-                was_active = True
-            self._chime_active = False
-            self._chime_pos = 0
-            self._chime_call = None
-        if was_active:
-            self._set_event("📞 Звонок отменён", force=True)
-            self._update_state(output_type="idle", output_name=None, output_level_db=-90.0)
-
     def reset_sip_state(self):
-        """Принудительно сбрасывает SIP-состояние в idle.
-        Вызывается при старте SIP-клиента и при старте движка,
-        чтобы исключить «залипание» после сбоев."""
+        """Принудительно сбрасывает SIP-состояние в idle."""
         with self._lock:
             self._sip_active = False
             self._sip_call = None
@@ -325,9 +280,10 @@ class RadioOverlayEngine:
         with self._lock:
             return self._sip_active
 
-    # --- Chime / сигнал внимания ---
+    # ==================== Chime ====================
+
     def _load_chime(self):
-        """Загружает chime-файл (WAV → PCM bytes). Кэширует."""
+        """Загружает chime-файл (WAV -> PCM bytes). Кэширует."""
         with self._lock:
             if self._chime_data is not None:
                 return self._chime_data
@@ -358,8 +314,68 @@ class RadioOverlayEngine:
             logger.error(f"Failed to load chime: {e}")
             return None
 
+    def start_sip_chime(self, call=None):
+        """Запускает сигнал внимания перед SIP-звонком. Возвращает True, если звонок принят."""
+        with self._lock:
+            already_busy = self._sip_active or self._chime_active
+            chime_enabled = self._settings.get("sip_chime_enabled", True)
+
+        if already_busy:
+            logger.warning("[SIP] Второй звонок во время активного — отклоняем")
+            if call is not None:
+                try:
+                    call.hangup()
+                except Exception:
+                    pass
+            return False
+
+        chime = self._load_chime() if chime_enabled else None
+
+        if chime is None:
+            with self._lock:
+                self._sip_active = True
+                self._state["sip_active"] = True
+            self._update_state(
+                output_type="sip",
+                output_name="SIP-звонок",
+                output_level_db=-90.0,
+            )
+            self._set_event("📞 SIP-звонок в эфире", force=True)
+            return True
+
+        with self._lock:
+            self._chime_data = chime
+            self._chime_pos = 0
+            self._chime_active = True
+            self._chime_call = call
+            if self._ann_active:
+                self._ann_active = False
+                self._ann_pos = 0
+
+        self._set_event("🔔 Входящий звонок — сигнал внимания", force=True)
+        self._update_state(
+            output_type="chime",
+            output_name="Сигнал внимания",
+            output_level_db=-90.0,
+            output_pos=0.0,
+            output_total=round(len(chime) / 2 / config.SAMPLE_RATE, 2),
+        )
+        return True
+
+    def cancel_chime(self):
+        was_active = False
+        with self._lock:
+            if self._chime_active:
+                was_active = True
+            self._chime_active = False
+            self._chime_pos = 0
+            self._chime_call = None
+        if was_active:
+            self._set_event("📞 Звонок отменён", force=True)
+            self._update_state(output_type="idle", output_name=None, output_level_db=-90.0)
+
     def test_chime(self):
-        """Проигрывает chime без SIP-звонка. Возвращает dict {"ok", "error"}."""
+        """Проигрывает chime без SIP. Возвращает dict {"ok", "error"}."""
         if not self._thread or not self._thread.is_alive():
             return {"ok": False, "error": "Движок не запущен. Запустите трансляцию."}
         chime = self._load_chime()
@@ -375,12 +391,8 @@ class RadioOverlayEngine:
             if self._ann_active:
                 self._ann_active = False
                 self._ann_pos = 0
-
-        # ← Очищаем накопленный radio — chime пойдёт СРАЗУ
-            self._clear_output_queues()
-            self._spawn_chime_pump()
-            self._set_event("🔔 Тест сигнала внимания", force=True)
-            self._update_state(
+        self._set_event("🔔 Тест сигнала внимания", force=True)
+        self._update_state(
             output_type="chime",
             output_name="Тест сигнала",
             output_level_db=-90.0,
@@ -388,43 +400,11 @@ class RadioOverlayEngine:
             output_total=round(len(chime) / 2 / config.SAMPLE_RATE, 2),
         )
         return {"ok": True}
-    def _spawn_chime_pump(self):
-        """Запускает отдельный поток, который гонит chime в HW queue,
-        НЕ дожидаясь, пока _run проснётся от read() FFmpeg.
-        Только если ещё не запущен."""
-        t = self._chime_pump_thread
-        if t is not None and t.is_alive():
-            return
-        chunk_len = config.BLOCK_SIZE * config.CHANNELS * 2
-        silence = b"\x00" * chunk_len
-        sleep_s = chunk_len / 2 / config.SAMPLE_RATE  # ≈21 мс
-
-        def _pump():
-            while True:
-                with self._lock:
-                    if not self._chime_active:
-                        break
-                try:
-                    self._play_chime_chunk(silence)
-                except Exception as e:
-                    print(f"[CHIME-PUMP] error: {e}")
-                    break
-                time.sleep(sleep_s)
-
-        self._chime_pump_thread = threading.Thread(
-            target=_pump, daemon=True, name="chime-pump"
-        )
-        self._chime_pump_thread.start()
 
     def _play_chime_chunk(self, radio_chunk):
-        """Играет chime вместо радио. Радио плавно гаснет до SIP_DUCKING_LEVEL."""
         with self._lock:
             chime = self._chime_data
             pos = self._chime_pos
-
-        if pos == 0:
-            print(f"[CHIME] t={time.time():.3f} first chunk, "
-                  f"hw_q={self._hw_output._queue.qsize() if hasattr(self._hw_output, '_queue') else '?'}") #диагностика chime
 
         if chime is None or pos >= len(chime):
             self._finish_chime()
@@ -440,57 +420,33 @@ class RadioOverlayEngine:
             radio_chunk, chime_chunk,
             pos // 2, len(chime) // 2,
             fade_out_s, 0,
-            config.SIP_DUCKING_LEVEL,   # ← было 0.0, теперь 0.05
+            0.0,
         )
-
-        # Обновляем _sip_gain_current синхронно по времени,
-        # чтобы после chime не было скачка radio с 5% обратно до 100%
-        if self._sip_active:
-            fade_s = config.SIP_FADE_MS / 1000.0
-            elapsed = time.time() - self._sip_fade_start_time
-            if fade_s <= 0 or elapsed >= fade_s:
-                self._sip_gain_current = self._sip_gain_target
-            else:
-                t = elapsed / fade_s
-                self._sip_gain_current = (
-                    self._sip_gain_start
-                    + (self._sip_gain_target - self._sip_gain_start) * t
-                )
 
         with self._lock:
             self._chime_pos = pos + take
+            new_pos = self._chime_pos
 
         self._push_output(
             out, "chime",
             {
                 "output_name": "Сигнал внимания",
-                "output_pos": round(self._chime_pos / 2 / config.SAMPLE_RATE, 2),
+                "output_pos": round(new_pos / 2 / config.SAMPLE_RATE, 2),
                 "output_total": round(len(chime) / 2 / config.SAMPLE_RATE, 2),
             },
         )
 
-        if self._chime_pos >= len(chime):
+        if new_pos >= len(chime):
             self._finish_chime()
 
     def _finish_chime(self):
-        """Chime закончился. sip_client сам отправит answer 200."""
         with self._lock:
             self._chime_active = False
             self._chime_pos = 0
             self._chime_call = None
-            sip_active = self._sip_active
-
-        if sip_active:
-            self._update_state(
-                output_type="sip",
-                output_name="SIP-звонок",
-                output_level_db=-90.0,
-                output_pos=None,
-                output_total=None,
-            )
         self._update_state(last_event="streaming")
 
-    # --- API ---
+    # ==================== Публичное API ====================
     def get_state(self):
         with self._lock:
             state = dict(self._state)
@@ -568,9 +524,6 @@ class RadioOverlayEngine:
             pass
         return cleaned
 
-    def get_hw_output(self):
-        return self._hw_output
-
     def get_output_chunk(self, timeout=1.0):
         try:
             return self._output_queue.get(timeout=timeout)
@@ -609,6 +562,7 @@ class RadioOverlayEngine:
             if not self._scan_buffer or self._scan_buffer_size == 0:
                 return {"ok": False, "error": "Нет данных. Запустите трансляцию и подождите 2-3 секунды."}
             chunks = list(self._scan_buffer)
+            buf_sec = round(self._scan_buffer_size / config.SAMPLE_RATE, 2)
         try:
             combined = np.concatenate(chunks).astype(np.int16).tobytes()
         except Exception as e:
@@ -616,7 +570,7 @@ class RadioOverlayEngine:
         candidates = scan_ctcss_frequencies(combined)
         return {
             "ok": True,
-            "buffer_seconds": round(self._scan_buffer_size / config.SAMPLE_RATE, 2),
+            "buffer_seconds": buf_sec,
             "candidates": candidates,
         }
 
@@ -635,6 +589,7 @@ class RadioOverlayEngine:
             return False
         return True
 
+    # ==================== Start / Stop ====================
     def start(self):
         if self._thread and self._thread.is_alive():
             return False
@@ -646,6 +601,9 @@ class RadioOverlayEngine:
             self._playing_name = None
             self._sip_active = False
             self._sip_call = None
+            self._chime_active = False
+            self._chime_pos = 0
+            self._chime_call = None
             self._tone_events.clear()
             self._total_ctcss = 0
             self._total_dcs = 0
@@ -674,16 +632,13 @@ class RadioOverlayEngine:
                 self._hw_output.start(hw_dev)
             except Exception as e:
                 logger.warning(f"Не удалось восстановить аппаратный выход: {e}")
-            # Предзагрузка chime (ускоряет реакцию на первый звонок)
-            try:
-                self._load_chime()
-            except Exception:
-                pass
-        while True:
-            try:
-                self._output_queue.get_nowait()
-            except queue.Empty:
-                break
+
+        try:
+            self._load_chime()
+        except Exception:
+            pass
+
+        _drain_queue(self._output_queue)
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -691,6 +646,7 @@ class RadioOverlayEngine:
 
     def stop(self):
         self._stop_event.set()
+        stop_active_ffmpeg()
         if self._thread:
             self._thread.join(timeout=5)
         with self._lock:
@@ -708,8 +664,7 @@ class RadioOverlayEngine:
             self._chime_call = None
         self._set_event("stopped", force=True)
 
-
-    # --- Внутреннее ---
+    # ==================== Утилиты ====================
     def _update_state(self, **kwargs):
         with self._lock:
             self._state.update(kwargs)
@@ -723,11 +678,10 @@ class RadioOverlayEngine:
             self._last_event_time = now
 
     @staticmethod
-    def _level(chunk):
-        samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
-        if len(samples) == 0:
+    def _level(samples_f32):
+        if len(samples_f32) == 0:
             return 0.0, -90.0
-        rms = float(np.sqrt(np.mean(samples ** 2)))
+        rms = float(np.sqrt(np.mean(samples_f32 * samples_f32)))
         db = 20.0 * math.log10(rms + 1e-9)
         return rms, max(-90.0, min(0.0, db))
 
@@ -754,35 +708,23 @@ class RadioOverlayEngine:
         return {"window_s": window_s, "bucket_s": bucket_s, "buckets": buckets}
 
     @staticmethod
-    def _compute_spectrum(chunk, prev_spectrum=None):
+    def _compute_spectrum(samples_f32, prev_spectrum=None):
         try:
-            samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32)
-            if len(samples) < 512:
+            n_fft = len(samples_f32)
+            if n_fft < 512:
                 return [0.0] * SPECTRUM_BANDS
-            n_fft = len(samples)
-            window = np.hanning(n_fft)
-            fft = np.fft.rfft(samples * window)
-            mag = np.abs(fft)
-            sr = config.SAMPLE_RATE
-            nyquist = sr / 2.0
-            freqs = np.fft.rfftfreq(n_fft, 1.0 / sr)
-            f_min = 40.0
-            f_max = min(nyquist, 16000.0)
-            if f_max <= f_min:
+            plan = _get_spectrum_plan(n_fft, config.SAMPLE_RATE)
+            if plan is None:
                 return [0.0] * SPECTRUM_BANDS
-            log_ratio = np.log(f_max / f_min)
+            window, bins = plan
+            mag = np.abs(np.fft.rfft(samples_f32 * window))
             bands = []
-            for i in range(SPECTRUM_BANDS):
-                f_lo = f_min * np.exp(log_ratio * i / SPECTRUM_BANDS)
-                f_hi = f_min * np.exp(log_ratio * (i + 1) / SPECTRUM_BANDS)
-                idx_lo = int(np.searchsorted(freqs, f_lo, side="left"))
-                idx_hi = int(np.searchsorted(freqs, f_hi, side="right"))
-                if idx_hi <= idx_lo:
-                    idx_hi = min(idx_lo + 1, len(mag))
+            for idx_lo, idx_hi, tilt in bins:
                 band_mag = float(np.mean(mag[idx_lo:idx_hi])) if idx_hi > idx_lo else 0.0
-                tilt = 1.0 + (i / SPECTRUM_BANDS) * 4.0
                 bands.append(band_mag * tilt)
-            mx = max(bands) if max(bands) > 0 else 1.0
+            mx = max(bands)
+            if mx <= 0.0:
+                mx = 1.0
             norm = [b / mx for b in bands]
             if prev_spectrum and len(prev_spectrum) == len(norm):
                 result = []
@@ -797,43 +739,25 @@ class RadioOverlayEngine:
             logger.debug(f"spectrum error: {e}")
             return [0.0] * SPECTRUM_BANDS
 
-    def _update_spectrum(self, chunk):
+    def _update_spectrum(self, samples_f32):
         now = time.time()
         if now - self._spectrum_last < 0.08:
             return
         self._spectrum_last = now
         with self._lock:
             prev = list(self._state.get("spectrum") or [])
-        spec = self._compute_spectrum(chunk, prev)
+        spec = self._compute_spectrum(samples_f32, prev)
         self._update_state(spectrum=spec)
 
-    def _update_scan_buffer(self, chunk):
-        try:
-            arr = np.frombuffer(chunk, dtype=np.int16)
-        except Exception:
-            return
-        if len(arr) == 0:
+    def _update_scan_buffer(self, arr_i16):
+        if len(arr_i16) == 0:
             return
         with self._lock:
-            self._scan_buffer.append(arr)
-            self._scan_buffer_size += len(arr)
+            self._scan_buffer.append(arr_i16)
+            self._scan_buffer_size += len(arr_i16)
             while self._scan_buffer_size > self._scan_buffer_max and self._scan_buffer:
                 removed = self._scan_buffer.popleft()
                 self._scan_buffer_size -= len(removed)
-
-    def _clear_output_queues(self):
-        """Очищает output_queue и HW queue перед chime — чтобы chime
-        не встал в конец 4-6-секундного backlog'а."""
-        print(f"[CLEAR] t={time.time():.3f} clearing queues")
-        try:
-            self._hw_output.clear()
-        except Exception:
-            pass
-        try:
-            while True:
-                self._output_queue.get_nowait()
-        except queue.Empty:
-            pass
 
     def _push_output(self, chunk, output_type="radio", extra=None):
         if chunk is None:
@@ -852,13 +776,13 @@ class RadioOverlayEngine:
         if self._hw_output.is_running():
             self._hw_output.push(chunk)
 
-        # Метрики исходящего потока (не чаще 10 раз/сек)
         now = time.time()
         if now - self._output_last_update < 0.1:
             return
         self._output_last_update = now
         try:
-            _rms, db = self._level(chunk)
+            samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) * (1.0 / 32768.0)
+            _rms, db = self._level(samples)
         except Exception:
             db = -90.0
         upd = {
@@ -869,7 +793,7 @@ class RadioOverlayEngine:
             upd.update(extra)
         self._update_state(**upd)
 
-    # --- Выбор объявления и расписания ---
+    # ==================== Выбор объявления ====================
     def _pick_announcement_for_trigger(self):
         """Возвращает (ann_id, schedule_id) или None."""
         items = announcement_store.list_announcements()
@@ -897,7 +821,7 @@ class RadioOverlayEngine:
         candidates.sort(key=lambda c: c["last_played"])
         return candidates[0]["ann_id"], candidates[0]["sched_id"]
 
-    # --- DTMF ---
+    # ==================== DTMF ====================
     def _handle_dtmf_digits(self, digits):
         now = time.time()
         with self._lock:
@@ -940,7 +864,7 @@ class RadioOverlayEngine:
     def trigger_dtmf_test(self, label):
         return self._handle_trigger(dtmf_label=f"test:{label}")
 
-    # --- Триггеры ---
+    # ==================== Триггеры ====================
     def _handle_trigger(self, from_timeout=False, dtmf_label=None):
         now = time.time()
         with self._lock:
@@ -996,11 +920,11 @@ class RadioOverlayEngine:
             self._set_event(f"🔔 {name} в эфире", force=True)
         return True
 
-    def _check_timeout_trigger(self, settings):
-        if not settings.get("tone_timeout_enabled"):
+    def _check_timeout_trigger(self, enabled, timeout_val):
+        if not enabled:
             return
         try:
-            timeout = float(settings.get("tone_timeout_seconds", 0))
+            timeout = float(timeout_val)
         except (TypeError, ValueError):
             return
         if timeout <= 0:
@@ -1017,6 +941,10 @@ class RadioOverlayEngine:
         with self._lock:
             ann_data = self._playing_data
             pos = self._ann_pos
+            fade_out_ms = self._settings["fade_out_ms"]
+            fade_in_ms = self._settings["fade_in_ms"]
+            ducking = self._settings["ducking_level"]
+
         if ann_data is None:
             self._finish_announcement()
             return None
@@ -1030,19 +958,19 @@ class RadioOverlayEngine:
         if take < len(chunk):
             ann_chunk = ann_chunk + b"\x00" * (len(chunk) - take)
 
-        s = self.get_settings()
-        fade_out_s = int(s["fade_out_ms"] * config.SAMPLE_RATE / 1000)
-        fade_in_s = int(s["fade_in_ms"] * config.SAMPLE_RATE / 1000)
+        fade_out_s = int(fade_out_ms * config.SAMPLE_RATE / 1000)
+        fade_in_s = int(fade_in_ms * config.SAMPLE_RATE / 1000)
         pos_samples = pos // 2
         total_samples = len(ann_data) // 2
 
         mixed = _apply_envelope(
             chunk, ann_chunk, pos_samples, total_samples,
-            fade_out_s, fade_in_s, s["ducking_level"],
+            fade_out_s, fade_in_s, ducking,
         )
         with self._lock:
             self._ann_pos = pos + take
-        if self._ann_pos >= len(ann_data):
+            new_pos = self._ann_pos
+        if new_pos >= len(ann_data):
             self._finish_announcement()
         return mixed
 
@@ -1073,15 +1001,29 @@ class RadioOverlayEngine:
             self._net_last_time = now
         self._update_state(cpu_percent=round(cpu, 1), network_bps=net_bps)
 
+    # ==================== Менеджер источников ====================
     def _stream_manager(self):
         s = self.get_settings()
+
         if s["source_type"] == "device":
             self._update_state(current_source="Устройство", using_reserve=False)
-            try:
-                from audio_capture import stream_from_device
-                yield from stream_from_device(device=s["input_device"])
-            except Exception as e:
-                logger.warning(f"Ошибка устройства: {e}")
+            while not self._stop_event.is_set():
+                try:
+                    from audio_capture import stream_from_device
+                    got_any = False
+                    for chunk in stream_from_device(device=s["input_device"]):
+                        if self._stop_event.is_set():
+                            break
+                        got_any = True
+                        yield chunk
+                    if not got_any and not self._stop_event.is_set():
+                        print("[ENGINE] Устройство завершилось без данных, переподключение...")
+                        time.sleep(2)
+                except Exception as e:
+                    logger.warning(f"Ошибка устройства: {e}")
+                    if self._stop_event.is_set():
+                        break
+                    time.sleep(2)
             return
 
         main_url = (s.get("radio_url") or "").strip()
@@ -1106,14 +1048,25 @@ class RadioOverlayEngine:
                 continue
             sources.append({"name": r.get("name") or f"Резерв {i+1}", "url": url, "is_main": False})
 
+        # --- Один источник: бесконечное переподключение ---
         if len(sources) == 1:
             self._update_state(current_source="Основной", using_reserve=False)
-            try:
-                yield from stream_audio_chunks(url=main_url, read_timeout=timeout)
-            except Exception as e:
-                logger.warning(f"Источник упал: {e}")
+            while not self._stop_event.is_set():
+                try:
+                    for chunk in stream_audio_chunks(url=main_url, read_timeout=timeout):
+                        if self._stop_event.is_set():
+                            break
+                        yield chunk
+                except Exception as e:
+                    logger.warning(f"Источник упал: {e}")
+                if self._stop_event.is_set():
+                    break
+                print("[ENGINE] Источник завершился, переподключение через 3 сек...")
+                self._set_event("⚠ источник отключился, переподключение", force=True)
+                time.sleep(3)
             return
 
+        # --- Несколько источников: fallback + автовозврат ---
         idx = 0
         last_try_main = 0.0
         while not self._stop_event.is_set():
@@ -1124,12 +1077,22 @@ class RadioOverlayEngine:
                 source_info=f"{src['name']}: {src['url']}",
             )
             try:
+                got_any = False
                 for chunk in stream_audio_chunks(url=src["url"], read_timeout=timeout):
                     if self._stop_event.is_set():
                         break
+                    got_any = True
                     yield chunk
                     if not src["is_main"] and time.time() - last_try_main > retry_main:
                         break
+                if not got_any and not self._stop_event.is_set():
+                    logger.warning(f"Источник '{src['name']}' завершился без данных")
+                    if idx < len(sources) - 1:
+                        idx += 1
+                    else:
+                        idx = 0
+                        time.sleep(2)
+                    continue
             except Exception as e:
                 logger.warning(f"Источник '{src['name']}' недоступен: {e}")
                 if idx < len(sources) - 1:
@@ -1138,8 +1101,10 @@ class RadioOverlayEngine:
                     idx = 0
                     time.sleep(2)
                 continue
+
             if self._stop_event.is_set():
                 break
+
             if not src["is_main"]:
                 idx = 0
                 last_try_main = time.time()
@@ -1148,6 +1113,7 @@ class RadioOverlayEngine:
                     idx = 1
                 time.sleep(1)
 
+    # ==================== Главный цикл ====================
     def _run(self):
         self._update_state(running=True, error=None)
         self._set_event("starting", force=True)
@@ -1158,56 +1124,44 @@ class RadioOverlayEngine:
             for chunk in self._stream_manager():
                 if self._stop_event.is_set():
                     break
+
                 if self._chime_active:
-                    # chime играет chime_pump — независимо от read() FFmpeg.
-                    # _run только пропускает входящие чанки, чтобы не дублировать.
-                    time.sleep(0.005)
-                    # ← ОБЯЗАТЕЛЬНО: иначе chime
-                    # генерируется 50x быстрее, чем
-                    # HW успевает воспроизвести
-                    if self._chime_pos == 0:
-                        print(f"[CHIME] t={time.time():.3f} run-loop started chime") #диагностика chime
+                    self._play_chime_chunk(chunk)
                     continue
 
-                # --- Плавное затухание/возврат радио при SIP (по времени) ---
-                if self._sip_active or self._sip_gain_current != self._sip_gain_target:
-                    fade_s = config.SIP_FADE_MS / 1000.0
-                    elapsed = time.time() - self._sip_fade_start_time
-                    if fade_s <= 0 or elapsed >= fade_s:
-                        self._sip_gain_current = self._sip_gain_target
-                    else:
-                        t = elapsed / fade_s
-                        self._sip_gain_current = (
-                                self._sip_gain_start
-                                + (self._sip_gain_target - self._sip_gain_start) * t
-                        )
-
-                    if self._sip_gain_current <= 0.005:
-                        silence = b"\x00" * len(chunk)
-                        self._push_output(silence, "sip",
-                                          {"output_name": "SIP-звонок"})
-                    else:
-                        arr = np.frombuffer(chunk, dtype=np.int16).astype(np.float32)
-                        arr = arr * self._sip_gain_current
-                        arr = np.clip(arr, -32768, 32767).astype(np.int16)
-                        self._push_output(arr.tobytes(), "sip",
-                                          {"output_name": "SIP-звонок"})
-                    time.sleep(0.005)
+                if self._sip_active:
+                    # Во время SIP-разговора голос идёт напрямую через VB-Cable из sip_worker,
+                    # а радио приглушается (отдаём тишину в выходной поток).
+                    silence = b"\x00" * len(chunk)
+                    self._push_output(silence, "sip", {"output_name": "SIP-звонок"})
                     continue
 
-                self._update_scan_buffer(chunk)
-                self._update_perf(self.get_settings()["source_type"])
-                self._update_spectrum(chunk)
+                arr_i16 = np.frombuffer(chunk, dtype=np.int16)
+                samples_f32 = arr_i16.astype(np.float32) * (1.0 / 32768.0)
 
-                rms, db = self._level(chunk)
+                with self._lock:
+                    src_type = self._settings["source_type"]
+                    tone_freq = self._settings["tone_freq"]
+                    det_thresh = self._settings["detection_threshold"]
+                    dcs_freq = self._settings["dcs_freq"]
+                    dcs_thresh = self._settings["dcs_threshold"]
+                    sim_tone = self._settings["simulate_tone"]
+                    timeout_en = self._settings["tone_timeout_enabled"]
+                    timeout_sec = self._settings["tone_timeout_seconds"]
+                    src_name = self._state.get("current_source") or "Основной"
+
+                self._update_scan_buffer(arr_i16)
+                self._update_perf(src_type)
+                self._update_spectrum(samples_f32)
+
+                rms, db = self._level(samples_f32)
                 self._update_state(signal_rms=round(rms, 4), signal_db=round(db, 1))
 
-                s = self.get_settings()
                 tones = detect_all(chunk, [
-                    {"name": "ctcss", "freq": s["tone_freq"], "threshold": s["detection_threshold"]},
-                    {"name": "dcs",   "freq": s["dcs_freq"], "threshold": s["dcs_threshold"]},
+                    {"name": "ctcss", "freq": tone_freq, "threshold": det_thresh},
+                    {"name": "dcs",   "freq": dcs_freq, "threshold": dcs_thresh},
                 ])
-                ctcss = bool(tones["ctcss"]["detected"]) or bool(s["simulate_tone"])
+                ctcss = bool(tones["ctcss"]["detected"]) or bool(sim_tone)
                 dcs = bool(tones["dcs"]["detected"])
 
                 if ctcss and not self._prev_ctcss:
@@ -1223,7 +1177,7 @@ class RadioOverlayEngine:
 
                 self._update_state(
                     ctcss_detected=ctcss,
-                    ctcss_power=round(1.0 if s["simulate_tone"] else tones["ctcss"]["power"], 4),
+                    ctcss_power=round(1.0 if sim_tone else tones["ctcss"]["power"], 4),
                     dcs_detected=dcs,
                     dcs_power=round(tones["dcs"]["power"], 4),
                 )
@@ -1256,19 +1210,18 @@ class RadioOverlayEngine:
                 if ctcss or dcs:
                     self._handle_trigger()
                 else:
-                    self._check_timeout_trigger(s)
+                    self._check_timeout_trigger(timeout_en, timeout_sec)
                     if not self._ann_active:
                         self._set_event("streaming")
 
-                with self._lock:
-                    src_name = self._state.get("current_source") or "Основной"
                 self._push_output(chunk, "radio", {"output_name": src_name})
-                time.sleep(0.005)
 
         except Exception as e:
             logger.exception("Ошибка движка")
             self._update_state(error=str(e))
         finally:
+            if not self._stop_event.is_set():
+                print("[ENGINE] _stream_manager завершился без команды Стоп — источник закрылся")
             with self._lock:
                 self._chime_active = False
                 self._chime_pos = 0

@@ -8,7 +8,6 @@ import json
 import subprocess
 import threading
 import time
-from queue import Queue, Empty
 
 
 class SipClient:
@@ -27,21 +26,26 @@ class SipClient:
         self._stderr_thread = None
         self._running = False
         self._lock = threading.Lock()
+        self._send_lock = threading.Lock()
 
         self._ready_evt = threading.Event()
         self._registered_evt = threading.Event()
 
     def is_running(self):
         with self._lock:
-            return self._running
+            if not self._running or self._proc is None:
+                return False
+            return self._proc.poll() is None
 
     # --- Жизненный цикл ---
 
     def start(self):
         with self._lock:
-            if self._running:
+            if self._running and self._proc is not None and self._proc.poll() is None:
                 return False
             self._running = True
+            self._ready_evt.clear()
+            self._registered_evt.clear()
 
         # В dev: python -u sip_worker.py
         # В .exe: тот же .exe с флагом --sip-worker (перехват в main.py)
@@ -55,7 +59,9 @@ class SipClient:
             cmd = [sys.executable, "-u", worker_path]
 
         env = os.environ.copy()
-        env["PYTHONUNBUFFERED"] = "1"  # чтобы JSON-строки шли без задержки
+        env["PYTHONUNBUFFERED"] = "1"
+
+        creation_flags = 0x08000000 if os.name == "nt" else 0  # CREATE_NO_WINDOW
 
         try:
             self._proc = subprocess.Popen(
@@ -68,11 +74,13 @@ class SipClient:
                 encoding="utf-8",
                 errors="replace",
                 env=env,
+                creationflags=creation_flags,
             )
         except Exception as e:
             print(f"[SIP] subprocess start error: {e}")
             with self._lock:
                 self._running = False
+                self._proc = None
             return False
 
         self._stdout_thread = threading.Thread(
@@ -104,53 +112,64 @@ class SipClient:
             "password": self.password,
         })
 
-        if not self._registered_evt.wait(timeout=10):
-            print("[SIP] WARNING: регистрация не завершилась за 10 сек")
+        if not self._registered_evt.wait(timeout=5):
+            print("[SIP] WARNING: регистрация не завершилась за 5 сек (ожидаем в фоне)")
 
-        print(f"[SIP] Клиент запущен "
-              f"({self.username}@{self.domain}). Ожидание звонков...")
+        print(f"[SIP] Клиент запущен ({self.username}@{self.domain}). Ожидание звонков...")
         return True
 
     def stop(self):
         with self._lock:
             self._running = False
+            proc = self._proc
+            self._proc = None
 
-        if self._proc is not None:
+        if proc is not None:
             try:
-                self._send({"cmd": "stop"})
+                self._send_to_proc(proc, {"cmd": "stop"})
             except Exception:
                 pass
             try:
-                self._proc.stdin.close()
+                if proc.stdin:
+                    proc.stdin.close()
             except Exception:
                 pass
             try:
-                self._proc.wait(timeout=5)
+                proc.wait(timeout=3)
             except Exception:
                 try:
-                    self._proc.terminate()
+                    proc.terminate()
+                    proc.wait(timeout=2)
                 except Exception:
-                    pass
-            self._proc = None
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
 
         print("[SIP] Клиент остановлен.")
 
     # --- Отправка/чтение ---
 
-    def _send(self, msg):
-        proc = self._proc
+    def _send_to_proc(self, proc, msg):
         if proc is None or proc.stdin is None:
             return
-        try:
-            line = json.dumps(msg, ensure_ascii=False) + "\n"
-            proc.stdin.write(line)
-            proc.stdin.flush()
-        except Exception as e:
-            print(f"[SIP] send error: {e}")
+        with self._send_lock:
+            try:
+                line = json.dumps(msg, ensure_ascii=False) + "\n"
+                proc.stdin.write(line)
+                proc.stdin.flush()
+            except Exception as e:
+                print(f"[SIP] send error: {e}")
+
+    def _send(self, msg):
+        with self._lock:
+            proc = self._proc
+        self._send_to_proc(proc, msg)
 
     def _read_stdout(self):
-        proc = self._proc
-        if proc is None:
+        with self._lock:
+            proc = self._proc
+        if proc is None or proc.stdout is None:
             return
         try:
             for line in proc.stdout:
@@ -173,8 +192,9 @@ class SipClient:
                 self._running = False
 
     def _read_stderr(self):
-        proc = self._proc
-        if proc is None:
+        with self._lock:
+            proc = self._proc
+        if proc is None or proc.stderr is None:
             return
         try:
             for line in proc.stderr:
@@ -194,7 +214,6 @@ class SipClient:
 
         elif ev == "registered":
             print("[SIP] Account created")
-            # ждём reg_state для 200
 
         elif ev == "reg_state":
             code = int(msg.get("code", 0))
@@ -211,10 +230,10 @@ class SipClient:
         elif ev == "incoming_call":
             remote = msg.get("remote", "unknown")
             print(f"[SIP] Входящий звонок от: {remote}")
-            # В отдельном потоке — чтобы не блокировать чтение stdout
             threading.Thread(
                 target=self._handle_incoming,
-                daemon=True, name="sip-incoming"
+                daemon=True,
+                name="sip-incoming",
             ).start()
 
         elif ev == "call_confirmed":
@@ -237,10 +256,10 @@ class SipClient:
                 print(f"[SIP] exit_sip_mode error: {e}")
 
         elif ev == "media_active":
-            print("[SIP] SIP-аудио → CABLE In (subprocess)")
+            print("[SIP] SIP-аудио -> CABLE In (subprocess)")
 
         elif ev == "answered":
-            pass  # ответ на INVITE отправлен
+            pass
 
         elif ev == "error":
             where = msg.get("where", "?")
@@ -250,7 +269,7 @@ class SipClient:
     # --- Обработка входящего ---
 
     def _handle_incoming(self):
-        """Запускает chime, ждёт окончания в ЭФИРЕ, потом отвечает."""
+        """Запускает chime, ждёт окончания в ЭФИРЕ, потом отвечает 200 OK."""
         t0 = time.time()
         print(f"[SIP] [{t0:.3f}] incoming: start_sip_chime")
 
@@ -259,14 +278,15 @@ class SipClient:
         except Exception as e:
             print(f"[SIP] start_sip_chime error: {e}")
             ok = False
-        print(f"[SIP] [{time.time():.3f}] start_sip_chime → {ok}")
+
+        print(f"[SIP] [{time.time():.3f}] start_sip_chime -> {ok}")
 
         if not ok:
             print("[SIP] Занято — отклоняем (486)")
             self._send({"cmd": "answer", "status": 486})
             return
 
-        # 1) Ждём, пока chime сгенерирован (engine → HW queue)
+        # 1) Ждём, пока chime сгенерирован (engine -> HW queue)
         deadline = time.time() + 15.0
         while time.time() < deadline:
             try:
@@ -275,9 +295,9 @@ class SipClient:
             except Exception:
                 break
             time.sleep(0.02)
+
         t_gen = time.time()
-        print(f"[SIP] [{t_gen:.3f}] chime generated "
-              f"(elapsed={t_gen - t0:.2f}s)")
+        print(f"[SIP] [{t_gen:.3f}] chime generated (elapsed={t_gen - t0:.2f}s)")
 
         # 2) Ждём, пока HW queue РЕАЛЬНО опустеет в эфире
         hw = None
@@ -286,7 +306,7 @@ class SipClient:
         except Exception as e:
             print(f"[SIP] get_hw_output: {e}")
 
-        if hw is not None:
+        if hw is not None and hw.is_running():
             deadline2 = time.time() + 5.0
             while time.time() < deadline2:
                 try:
@@ -298,6 +318,5 @@ class SipClient:
                 time.sleep(0.02)
 
         dt = time.time() - t0
-        print(f"[SIP] [{time.time():.3f}] chime done IN AIR "
-              f"(elapsed={dt:.2f}s) → send answer 200")
+        print(f"[SIP] [{time.time():.3f}] chime done IN AIR (elapsed={dt:.2f}s) -> send answer 200")
         self._send({"cmd": "answer", "status": 200})

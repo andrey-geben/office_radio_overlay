@@ -85,6 +85,22 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') closeAllModals();
 });
 
+async function showLogs() {
+    try {
+        const r = await fetch('/api/logs?n=100');
+        const data = await r.json();
+        if (!data.ok) {
+            alert('Ошибка: ' + (data.error || 'неизвестно'));
+            return;
+        }
+        const text = data.lines.join('');
+        // Показываем в модалке или в prompt
+        const modal = window.open('', '_blank', 'width=900,height=600');
+        modal.document.write('<pre style="font-size:12px;white-space:pre-wrap;">' + text.replace(/</g, '&lt;') + '</pre>');
+    } catch (e) {
+        alert('Ошибка: ' + e.message);
+    }
+}
 // ==================== Стрелочные индикаторы ====================
 function setMeter(id, value, min, max) {
     const el = $(id);
@@ -916,7 +932,7 @@ function applyTheme(theme) {
     try { localStorage.setItem('evraz_theme', theme); } catch (e) {}
 
     const btn = document.getElementById('theme-toggle');
-    if (btn) btn.textContent = theme === 'light' ? '☀️' : '🌙';
+    if (btn) btn.textContent = theme === 'light' ? '☀' : '☾';
 
     const sel = document.getElementById('theme-select');
     if (sel) sel.value = theme;
@@ -1623,3 +1639,56 @@ function renderStreamUrls(items) {
 loadAbout();
 _refreshTimer = setInterval(refreshAll, 1000);
 refreshAll();
+
+// ==================== Монохромные иконки ====================
+// Эмодзи в кнопках и заголовках обесцвечиваются: цвет в интерфейсе
+// остаётся только у индикаторов (🟢 работает / 🔴 ошибка / лампочки).
+(function monoEmoji() {
+    const RE = /(\p{Extended_Pictographic}\uFE0F?)/gu;
+    const SKIP = new Set(['SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT', 'OPTION']);
+    // Только кнопки и заголовки — статусные строки не трогаем.
+    const ROOT_SEL = '.btn, .transport-btn, .modal-close, .auth-theme-btn, ' +
+                     '.card > h2, .card h2, .modal-content h2, .modal-content h3, ' +
+                     '.about-block h3, .transport-btn .t-icon, .empty, .queue-empty, .help-block, .help-block summary';
+
+    function walk(node) {
+        if (node.nodeType === 3) {
+            const text = node.nodeValue;
+            if (!text || !RE.test(text)) { RE.lastIndex = 0; return; }
+            RE.lastIndex = 0;
+            const frag = document.createDocumentFragment();
+            let last = 0, m;
+            while ((m = RE.exec(text))) {
+                if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+                const span = document.createElement('span');
+                span.className = 'ico';
+                span.textContent = m[0];
+                frag.appendChild(span);
+                last = m.index + m[0].length;
+            }
+            if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+            node.parentNode.replaceChild(frag, node);
+        } else if (node.nodeType === 1 && !SKIP.has(node.tagName) && node.className !== 'ico') {
+            Array.from(node.childNodes).forEach(walk);
+        }
+    }
+
+    let busy = false;
+    const observer = new MutationObserver(() => { if (!busy) run(); });
+
+    function run() {
+        busy = true;
+        observer.disconnect();
+        try {
+            document.querySelectorAll(ROOT_SEL).forEach(walk);
+        } catch (e) { console.warn('[mono]', e); }
+        observer.observe(document.body, { childList: true, subtree: true });
+        busy = false;
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', run);
+    } else {
+        run();
+    }
+})();

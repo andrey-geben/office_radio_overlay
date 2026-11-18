@@ -1,58 +1,62 @@
-﻿# office_radio_overlay.spec
 # -*- mode: python ; coding: utf-8 -*-
 import os
-import sys
 from PyInstaller.utils.hooks import collect_all
 
-# --- pjsua2: DLL + скрытые импорты ---
-pjsua2_datas, pjsua2_binaries, pjsua2_hidden = collect_all('pjsua2')
+# --- Собираем нативные зависимости pjsua2 и sounddevice ---
+pj_datas, pj_binaries, pj_hidden = collect_all('pjsua2')
+sd_datas, sd_binaries, sd_hidden = collect_all('sounddevice')
 
-# --- sounddevice: папка _sounddevice_data с portaudio DLL ---
-import sounddevice
-sd_dir = os.path.dirname(sounddevice.__file__)
-sd_data_dir = os.path.join(os.path.dirname(sd_dir), '_sounddevice_data')
-
-datas = [
-    ('templates', 'templates'),
-    ('static', 'static'),
-    # assets/ (chime.wav, settings.json, users.json, announcements/) и ffmpeg.exe
-    # НЕ бандлим — копируются вручную рядом с .exe после сборки.
-    *pjsua2_datas,
-]
-
-if os.path.isdir(sd_data_dir):
-    datas.append((sd_data_dir, '_sounddevice_data'))
-
-binaries = [
-    *pjsua2_binaries,
-]
-
-hiddenimports = [
-    'jinja2.ext',
-    'sip_worker',
-    'preflight',
-    *pjsua2_hidden,
-    'scipy.signal',
-    'scipy._lib.array_api_compat.numpy.fft',
-    'numpy',
-    'pydub',
-    'psutil',
-    'sounddevice',
-]
+# --- Проверка иконки ---
+icon_path = os.path.join(SPECPATH, 'app.ico')
+if not os.path.isfile(icon_path):
+    icon_path = None
 
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=binaries,
-    datas=datas,
-    hiddenimports=hiddenimports,
+    binaries=pj_binaries + sd_binaries,
+    datas=pj_datas + sd_datas + [
+        ('templates', 'templates'),
+        ('static', 'static'),
+        # CA-бандл для HTTPS-потоков: PyInstaller 6 кладёт его в _internal,
+        # audio_capture._find_ca_bundle() ищет и там, и рядом с .exe.
+        ('cacert.pem', '.'),
+        # ВНИМАНИЕ: assets НЕ включаем — создаётся при первом запуске
+    ],
+    hiddenimports=pj_hidden + sd_hidden + [
+        'engine',
+        'sip_client',
+        'sip_worker',
+        'audio_capture',
+        'audio_output',
+        'preflight',
+        'auth',
+        'announcement_store',
+        'settings_store',
+        'users_store',
+        'config',
+        'tone_detector',
+        'dtmf_detector',
+        'mixer',
+        'make_chime',
+        'logging_setup',
+        'sounddevice',
+        'numpy',
+        'scipy',
+        'scipy._lib.array_api_compat.numpy.fft',
+        'scipy.signal.windows',
+        'scipy.special',
+        'soxr',
+        'pydub',
+        'psutil',
+        'pjsua2',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[
-        'tkinter', 'matplotlib', 'PyQt5', 'PySide2', 'IPython',
-        'PySide6', 'pandas', 'notebook',
-    ],
+    excludes=[],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
     noarchive=False,
 )
 
@@ -63,8 +67,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='office_radio_overlay',
-    icon='app.ico' if os.path.isfile('app.ico') else None,
+    name='OfficeRadioOverlay',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -73,8 +76,7 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
+    icon=icon_path,
 )
 
 coll = COLLECT(
@@ -85,5 +87,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name='office_radio_overlay',
+    name='OfficeRadioOverlay',
 )

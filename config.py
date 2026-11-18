@@ -69,6 +69,13 @@ FALLBACK_TIMEOUT_SECONDS = 10
 FALLBACK_RETRY_MAIN_SECONDS = 60
 FALLBACK_SOURCES = []
 
+# --- Автооткрытие браузера при старте ---
+# True  — после запуска сервера открыть http://127.0.0.1:5000
+# False — не открывать (или задать AUTO_OPEN_BROWSER=0 в окружении)
+AUTO_OPEN_BROWSER = True
+# Свой адрес вместо локального (например, http://192.168.1.10:5000)
+BROWSER_URL = None
+
 # --- SIP: сигнал внимания перед соединением ---
 SIP_CHIME_FILE = "assets/chime.wav"
 SIP_CHIME_ENABLED_DEFAULT = True

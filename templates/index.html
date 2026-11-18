@@ -16,253 +16,280 @@
 </head>
 <body data-role="{{ role }}">
 <div class="evraz-console">
-        <aside class="evraz-speaker evraz-speaker-left">
+
+    <!-- ============ ЛЕВАЯ КОЛОНКА ============ -->
+    <aside class="evraz-speaker evraz-speaker-left">
         <div class="speaker-cabinet">
             <div class="speaker-badge"><b>ZVUK</b></div>
-            <div class="speaker-tweeter"></div>
-            <div class="speaker-mid"></div>
-            <div class="speaker-woofer"></div>
+            <div class="speaker-grille">
+                <div class="speaker-tweeter"></div>
+                <div class="speaker-mid"></div>
+                <div class="speaker-woofer"></div>
+            </div>
+            <div class="speaker-foot"></div>
         </div>
     </aside>
+
     <main class="evraz-main">
-        <header class="topbar">
-            <h1>📻 OFFICE RADIO OVERLAY</h1>
-            <div class="user-block">
-                <span class="user-name">
-                    👤 {{ username }}
-                    <span class="role-badge role-{{ role }}">
-                        {% if role == 'admin' %}админ{% else %}оператор{% endif %}
+        <div class="stack-system">
+
+            <!-- ==== МОДУЛЬ 1: ПАНЕЛЬ УПРАВЛЕНИЯ / ТЮНЕР ==== -->
+            <header class="topbar stack-unit">
+                <h1>📻 OFFICE RADIO OVERLAY</h1>
+                <div class="user-block">
+                    <span class="user-name">
+                        👤 {{ username }}
+                        <span class="role-badge role-{{ role }}">
+                            {% if role == 'admin' %}админ{% else %}оператор{% endif %}
+                        </span>
                     </span>
-                </span>
-                <button type="button" id="theme-toggle" class="btn btn-logout" title="Переключить тему (тёмная / светлая)">🌙</button>
-                <a href="/change-password" class="btn btn-logout">🔑 Пароль</a>
-                <form method="post" action="/logout" class="inline-form">
-                    <button type="submit" class="btn btn-logout">Выйти</button>
-                </form>
-            </div>
-        </header>
+                    <button type="button" id="theme-toggle" class="btn btn-logout" title="Переключить тему (тёмная / светлая)">☾</button>
+                    <a href="/change-password" class="btn btn-logout">🔑 Пароль</a>
+                    <form method="post" action="/logout" class="inline-form">
+                        <button type="submit" class="btn btn-logout">Выйти</button>
+                    </form>
+                </div>
+            </header>
 
-        <!-- ============ ТРАНСПОРТНАЯ ПАНЕЛЬ ============ -->
-        <div class="transport">
-            {% if role == 'admin' %}
-            <button class="transport-btn btn-play" id="btn-start" title="Запустить трансляцию">
-                <span class="t-icon">▶</span><span class="t-label">PLAY</span>
-            </button>
-            <button class="transport-btn btn-stop" id="btn-stop" title="Остановить трансляцию">
-                <span class="t-icon">⏹</span><span class="t-label">STOP</span>
-            </button>
-            <div class="transport-sep"></div>
-            {% endif %}
-            <button class="transport-btn" data-open="modal-announcements" title="Служебные объявления">
-                <span class="t-icon">📢</span><span class="t-label">ОБЪЯВЛЕНИЯ</span>
-            </button>
-            {% if role == 'admin' %}
-            <button class="transport-btn" data-open="modal-settings" title="Настройки">
-                <span class="t-icon">⚙</span><span class="t-label">НАСТРОЙКИ</span>
-            </button>
-            <button class="transport-btn btn-sip-transport" data-open="modal-sip" title="SIP / ЛСО">
-                <span class="t-icon">📞</span><span class="t-label">SIP</span>
-                <span class="btn-led off" id="sip-btn-led"></span>
-            </button>
-            {% endif %}
-            <button class="transport-btn" data-open="modal-about" title="О программе">
-                <span class="t-icon">ℹ</span><span class="t-label">О ПРОГРАММЕ</span>
-            </button>
-        </div>
-
-        <!-- ============ СТАТУС ============ -->
-        <div class="card">
-            <div class="dashboard">
-                <div class="gauge-wrap">
-                    <svg viewBox="0 0 100 60" class="meter">
-                        <path d="M10,52 A40,40 0 0,1 90,52" fill="none" stroke="#3a3024" stroke-width="1.5"/>
-                        <line id="needle-signal" x1="50" y1="52" x2="50" y2="18"
-                              stroke="#c81e1e" stroke-width="1.6" stroke-linecap="round"
-                              transform="rotate(-90 50 52)"/>
-                        <circle cx="50" cy="52" r="2.5" fill="#1f1813"/>
-                    </svg>
-                    <div class="meter-label">SIGNAL</div>
-                    <div class="meter-value"><span id="signal-db">-90.0</span><small>dBFS</small></div>
-                </div>
-
-                <div class="gauge-wrap">
-                    <svg viewBox="0 0 100 60" class="meter">
-                        <path d="M10,52 A40,40 0 0,1 90,52" fill="none" stroke="#3a3024" stroke-width="1.5"/>
-                        <line id="needle-cpu" x1="50" y1="52" x2="50" y2="18"
-                              stroke="#c81e1e" stroke-width="1.6" stroke-linecap="round"
-                              transform="rotate(-90 50 52)"/>
-                        <circle cx="50" cy="52" r="2.5" fill="#1f1813"/>
-                    </svg>
-                    <div class="meter-label">CPU</div>
-                    <div class="meter-value"><span id="cpu-val">0</span><small>%</small></div>
-                </div>
-
-                <div class="gauge-wrap">
-                    <svg viewBox="0 0 100 60" class="meter">
-                        <path d="M10,52 A40,40 0 0,1 90,52" fill="none" stroke="#3a3024" stroke-width="1.5"/>
-                        <line id="needle-net" x1="50" y1="52" x2="50" y2="18"
-                              stroke="#c81e1e" stroke-width="1.6" stroke-linecap="round"
-                              transform="rotate(-90 50 52)"/>
-                        <circle cx="50" cy="52" r="2.5" fill="#1f1813"/>
-                    </svg>
-                    <div class="meter-label">NET</div>
-                    <div class="meter-value"><span id="net-val">0</span><small>KB/s</small></div>
-                </div>
-
-                <div class="lamps-column">
-                    <div class="lamp-item" id="ind-ctcss">
-                        <div class="led"></div>
-                        <div class="lamp-label">CTCSS</div>
-                        <div class="lamp-power" id="ind-ctcss-p">0.000</div>
-                    </div>
-                    <div class="lamp-item lamp-dcs" id="ind-dcs">
-                        <div class="led"></div>
-                        <div class="lamp-label">DCS</div>
-                        <div class="lamp-power" id="ind-dcs-p">0.000</div>
-                    </div>
-                    <div class="lamp-item lamp-onair" id="ind-onair">
-                        <div class="led"></div>
-                        <div class="lamp-label">ON AIR</div>
-                    </div>
-                    <div class="lamp-item lamp-sip" id="ind-sip">
-                        <div class="led"></div>
-                        <div class="lamp-label">SIP</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="panels-row">
-                <div class="equalizer-wrap">
-                    <div class="eq-label">SPECTRUM</div>
-                    <canvas id="eq-canvas" class="eq-canvas"></canvas>
-                </div>
-                <div class="equalizer-wrap">
-                    <div class="eq-label">СРАБОТКИ СУБТОНОВ</div>
-                    <canvas id="tone-canvas" class="eq-canvas"></canvas>
-                    <div class="tone-axis">
-                        <span>-5м</span><span>-4</span><span>-3</span><span>-2</span><span>-1</span><span>сейчас</span>
-                    </div>
-                    <div class="tone-stats">
-                        <span>CTCSS: <b id="th-ctcss-total">0</b></span>
-                        <span>DCS: <b id="th-dcs-total">0</b></span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="queue-panel">
-                <div class="queue-label">ОЧЕРЕДЬ В ЭФИР</div>
-                <div id="queue-list" class="queue-list">
-                    <div class="queue-empty">Загрузка...</div>
-                </div>
-            </div>
-<!-- ===== Статус SIP ===== -->
-            <div class="sip-status-strip state-off" id="sip-status-strip">
-                <span class="sip-strip-led off" id="sip-strip-led"></span>
-                <span class="sip-strip-label">SIP</span>
-                <span class="sip-strip-text" id="sip-strip-text">отключён</span>
-                <span class="sip-strip-hint" id="sip-strip-hint">—</span>
-            </div>
-<!-- ===== Исходящий поток ===== -->
-            <div class="output-flow">
-                <div class="output-flow-title">📡 ИСХОДЯЩИЙ ПОТОК</div>
-                <div class="output-flow-grid">
-                    <div class="output-flow-type idle" id="of-type">⏹ IDLE</div>
-                    <div class="output-flow-info" id="of-info">—</div>
-                    <div class="of-meter" id="of-meter"></div>
-                    <div class="output-flow-level" id="of-level">−∞ dB</div>
-                </div>
-            </div>
-<!-- ===== Исходящий поток. Конец ===== -->
-            <div class="status-grid">
-                <div><span class="label">Движок:</span><span id="running" class="value">—</span></div>
-                <div><span class="label">Источник:</span><span id="current-source" class="value">—</span></div>
-                <div><span class="label">Объявлений:</span><span id="count" class="value">—</span></div>
-                <div><span class="label">Сейчас:</span><span id="onair-text" class="value">—</span></div>
-                <div><span class="label">Без тона, сек:</span><span id="seconds-since-tone" class="value">0</span></div>
-                <div><span class="label">DTMF:</span><span id="dtmf-display" class="value">—</span></div>
-                <div><span class="label">Событие:</span><span id="event" class="value">—</span></div>
-                <div style="grid-column: 1 / -1"><span class="label">Ошибка:</span><span id="error" class="value">—</span></div>
-            </div>
-        </div>
-<!-- ============ ВЫХОД АУДИО (на главной) ============ -->
-        <div class="card">
-            <h2>🔊 Выход аудио</h2>
-            <details class="help-block">
-            <summary>❓ Какое устройство выбрать и почему список короткий</summary>
-            <div class="help-content">
-                <p><b>Веб-плеер</b> (в браузере) — независимый канал. Звук идёт через <code>/stream</code>, устройство выбирается в браузере (кнопка «По умолчанию»). <span class="warn">Смена устройства в браузере работает только на localhost или HTTPS.</span></p>
-                <p><b>Аппаратный выход</b> (сервер) — куда пишет <code>sounddevice</code>: радио, объявления, chime. Выбирайте <b>физическое устройство</b> (Realtek / USB-карта), а не виртуальный кабель, если не настраиваете микшер через VB-Audio.</p>
-                <p><span class="warn">⚠ Список устройств теперь содержит только WASAPI.</span> WDM-KS и MME отфильтрованы, потому что WDM-KS не поддерживает блокирующий API (ошибка <code>PaErrorCode -9999: Blocking API not supported yet</code>).</p>
-                <p><b>Как избежать конфликта с SIP:</b></p>
-                <ul>
-                    <li>HardwareOutput → <b>Realtek</b> (встроенные динамики)</li>
-                    <li>PJSIP → <b>USB-звуковая карта</b> (отдельное устройство)</li>
-                </ul>
-                <p>Если оба используют одно устройство — WMME блокирует одно из них. Радио в браузере пропадает, chime может не играть.</p>
-            </div>
-        </details>
-
-        <div class="player-row">
-            <div class="output-grid">
-                <div class="output-panel">
-                    <div class="output-panel-title">Веб-плеер (этот браузер)</div>
-                    <div class="player-row">
-                        <button type="button" id="btn-stream-connect" class="btn btn-start">▶ Подключить</button>
-                        <audio id="player" controls></audio>
-                    </div>
-        <!-- ===== Публичная ссылка на поток ===== -->
-            <div class="stream-link-panel">
-                <div class="stream-link-title">🔗 Публичная ссылка на поток</div>
-                <div class="hint" style="margin-bottom:8px;">
-                    Откройте в браузере, VLC или мобильном плеере — эфир будет слышен без входа в панель.
-                </div>
-                <div id="stream-url-list" class="stream-url-list">
-                    <div class="stream-url-empty">Загрузка...</div>
-                </div>
-            </div>
-                    <div class="form-row">
-                        <label>Устройство вывода
-                            <select id="sink-select"><option value="">По умолчанию</option></select>
-                        </label>
-                        <label>&nbsp;
-                            <button type="button" id="btn-refresh-sinks" class="btn btn-refresh">🔄 Обновить</button>
-                        </label>
-                    </div>
-                    <div class="hint">Выбор устройства в браузере работает на <code>localhost</code> или HTTPS.</div>
-                </div>
-
+            <!-- ==== МОДУЛЬ 2: ТРАНСПОРТ ==== -->
+            <div class="transport stack-unit">
                 {% if role == 'admin' %}
-                <div class="output-panel">
-                    <div class="output-panel-title">Аппаратный выход (сервер)</div>
-                    <div class="form-row">
-                        <label>Устройство воспроизведения
-                            <select id="hw-output-select"><option value="">Отключён</option></select>
-                        </label>
-                        <label>&nbsp;
-                            <button type="button" id="btn-refresh-hw-outputs" class="btn btn-refresh">🔄 Обновить</button>
-                        </label>
-                    </div>
-                    <button type="button" id="btn-apply-hw-output" class="btn btn-save">✅ Применить</button>
-                    <div class="hint">Используется для офисного усилителя, SIP/ЛСО, виртуального кабеля.</div>
-                </div>
+                <button class="transport-btn btn-play" id="btn-start" title="Запустить трансляцию">
+                    <span class="t-icon">▶</span><span class="t-label">PLAY</span>
+                </button>
+                <button class="transport-btn btn-stop" id="btn-stop" title="Остановить трансляцию">
+                    <span class="t-icon">⏹</span><span class="t-label">STOP</span>
+                </button>
+                <div class="transport-sep"></div>
                 {% endif %}
+                <button class="transport-btn" data-open="modal-announcements" title="Служебные объявления">
+                    <span class="t-icon">📢</span><span class="t-label">ОБЪЯВЛЕНИЯ</span>
+                </button>
+                {% if role == 'admin' %}
+                <button class="transport-btn" data-open="modal-settings" title="Настройки">
+                    <span class="t-icon">⚙</span><span class="t-label">НАСТРОЙКИ</span>
+                </button>
+                <button class="transport-btn btn-sip-transport" data-open="modal-sip" title="SIP / ЛСО">
+                    <span class="t-icon">📞</span><span class="t-label">SIP</span>
+                    <span class="btn-led off" id="sip-btn-led"></span>
+                </button>
+                {% endif %}
+                <button class="transport-btn" data-open="modal-about" title="О программе">
+                    <span class="t-icon">ℹ</span><span class="t-label">О ПРОГРАММЕ</span>
+                </button>
+
+                <div class="transport-knob-group">
+                    <div class="transport-knob-item">
+                        <div class="transport-knob-label">VOL</div>
+                        <div class="transport-knob"></div>
+                    </div>
+                    <div class="transport-knob-item">
+                        <div class="transport-knob-label">TONE</div>
+                        <div class="transport-knob"></div>
+                    </div>
+                </div>
             </div>
 
-            <span id="output-status" class="upload-status"></span>
-        </div>
+            <!-- ==== МОДУЛЬ 3: ДАШБОРД / ИНДИКАТОРЫ ==== -->
+            <div class="card stack-unit">
+                <div class="dashboard">
+                    <div class="gauge-wrap">
+                        <svg viewBox="0 0 100 60" class="meter">
+                            <path d="M10,52 A40,40 0 0,1 90,52" fill="none" stroke="#3a3024" stroke-width="1.5"/>
+                            <line id="needle-signal" x1="50" y1="52" x2="50" y2="18"
+                                  stroke="#c81e1e" stroke-width="1.6" stroke-linecap="round"
+                                  transform="rotate(-90 50 52)"/>
+                            <circle cx="50" cy="52" r="2.5" fill="#1f1813"/>
+                        </svg>
+                        <div class="meter-label">SIGNAL</div>
+                        <div class="meter-value"><span id="signal-db">-90.0</span><small>dBFS</small></div>
+                    </div>
 
-                <footer class="footer">
+                    <div class="gauge-wrap">
+                        <svg viewBox="0 0 100 60" class="meter">
+                            <path d="M10,52 A40,40 0 0,1 90,52" fill="none" stroke="#3a3024" stroke-width="1.5"/>
+                            <line id="needle-cpu" x1="50" y1="52" x2="50" y2="18"
+                                  stroke="#c81e1e" stroke-width="1.6" stroke-linecap="round"
+                                  transform="rotate(-90 50 52)"/>
+                            <circle cx="50" cy="52" r="2.5" fill="#1f1813"/>
+                        </svg>
+                        <div class="meter-label">CPU</div>
+                        <div class="meter-value"><span id="cpu-val">0</span><small>%</small></div>
+                    </div>
+
+                    <div class="gauge-wrap">
+                        <svg viewBox="0 0 100 60" class="meter">
+                            <path d="M10,52 A40,40 0 0,1 90,52" fill="none" stroke="#3a3024" stroke-width="1.5"/>
+                            <line id="needle-net" x1="50" y1="52" x2="50" y2="18"
+                                  stroke="#c81e1e" stroke-width="1.6" stroke-linecap="round"
+                                  transform="rotate(-90 50 52)"/>
+                            <circle cx="50" cy="52" r="2.5" fill="#1f1813"/>
+                        </svg>
+                        <div class="meter-label">NET</div>
+                        <div class="meter-value"><span id="net-val">0</span><small>KB/s</small></div>
+                    </div>
+
+                    <div class="lamps-column">
+                        <div class="lamp-item" id="ind-ctcss">
+                            <div class="led"></div>
+                            <div class="lamp-label">CTCSS</div>
+                            <div class="lamp-power" id="ind-ctcss-p">0.000</div>
+                        </div>
+                        <div class="lamp-item lamp-dcs" id="ind-dcs">
+                            <div class="led"></div>
+                            <div class="lamp-label">DCS</div>
+                            <div class="lamp-power" id="ind-dcs-p">0.000</div>
+                        </div>
+                        <div class="lamp-item lamp-onair" id="ind-onair">
+                            <div class="led"></div>
+                            <div class="lamp-label">ON AIR</div>
+                        </div>
+                        <div class="lamp-item lamp-sip" id="ind-sip">
+                            <div class="led"></div>
+                            <div class="lamp-label">SIP</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panels-row">
+                    <div class="equalizer-wrap">
+                        <div class="eq-label">SPECTRUM</div>
+                        <canvas id="eq-canvas" class="eq-canvas"></canvas>
+                    </div>
+                    <div class="equalizer-wrap">
+                        <div class="eq-label">СРАБОТКИ СУБТОНОВ</div>
+                        <canvas id="tone-canvas" class="eq-canvas"></canvas>
+                        <div class="tone-axis">
+                            <span>-5м</span><span>-4</span><span>-3</span><span>-2</span><span>-1</span><span>сейчас</span>
+                        </div>
+                        <div class="tone-stats">
+                            <span>CTCSS: <b id="th-ctcss-total">0</b></span>
+                            <span>DCS: <b id="th-dcs-total">0</b></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="queue-panel">
+                    <div class="queue-label">ОЧЕРЕДЬ В ЭФИР</div>
+                    <div id="queue-list" class="queue-list">
+                        <div class="queue-empty">Загрузка...</div>
+                    </div>
+                </div>
+
+                <div class="sip-status-strip state-off" id="sip-status-strip">
+                    <span class="sip-strip-led off" id="sip-strip-led"></span>
+                    <span class="sip-strip-label">SIP</span>
+                    <span class="sip-strip-text" id="sip-strip-text">отключён</span>
+                    <span class="sip-strip-hint" id="sip-strip-hint">—</span>
+                </div>
+
+                <div class="output-flow">
+                    <div class="output-flow-title">📡 ИСХОДЯЩИЙ ПОТОК</div>
+                    <div class="output-flow-grid">
+                        <div class="output-flow-type idle" id="of-type">⏹ IDLE</div>
+                        <div class="output-flow-info" id="of-info">—</div>
+                        <div class="of-meter" id="of-meter"></div>
+                        <div class="output-flow-level" id="of-level">−∞ dB</div>
+                    </div>
+                </div>
+
+                <button type="button" class="btn btn-refresh" onclick="showLogs()">📄 Показать логи</button>
+
+                <div class="status-grid">
+                    <div><span class="label">Движок:</span><span id="running" class="value">—</span></div>
+                    <div><span class="label">Источник:</span><span id="current-source" class="value">—</span></div>
+                    <div><span class="label">Объявлений:</span><span id="count" class="value">—</span></div>
+                    <div><span class="label">Сейчас:</span><span id="onair-text" class="value">—</span></div>
+                    <div><span class="label">Без тона, сек:</span><span id="seconds-since-tone" class="value">0</span></div>
+                    <div><span class="label">DTMF:</span><span id="dtmf-display" class="value">—</span></div>
+                    <div><span class="label">Событие:</span><span id="event" class="value">—</span></div>
+                    <div style="grid-column: 1 / -1"><span class="label">Ошибка:</span><span id="error" class="value">—</span></div>
+                </div>
+            </div>
+
+            <!-- ==== МОДУЛЬ 4: ВЫХОД АУДИО ==== -->
+            <div class="card stack-unit">
+                <h2>🔊 Выход аудио</h2>
+                <details class="help-block">
+                    <summary>❓ Какое устройство выбрать и почему список короткий</summary>
+                    <div class="help-content">
+                        <p><b>Веб-плеер</b> (в браузере) — независимый канал. Звук идёт через <code>/stream</code>, устройство выбирается в браузере (кнопка «По умолчанию»). <span class="warn">Смена устройства в браузере работает только на localhost или HTTPS.</span></p>
+                        <p><b>Аппаратный выход</b> (сервер) — куда пишет <code>sounddevice</code>: радио, объявления, chime. Выбирайте <b>физическое устройство</b> (Realtek / USB-карта), а не виртуальный кабель, если не настраиваете микшер через VB-Audio.</p>
+                        <p><span class="warn">⚠ Список устройств теперь содержит только WASAPI.</span> WDM-KS и MME отфильтрованы, потому что WDM-KS не поддерживает блокирующий API (ошибка <code>PaErrorCode -9999: Blocking API not supported yet</code>).</p>
+                        <p><b>Как избежать конфликта с SIP:</b></p>
+                        <ul>
+                            <li>HardwareOutput → <b>Realtek</b> (встроенные динамики)</li>
+                            <li>PJSIP → <b>USB-звуковая карта</b> (отдельное устройство)</li>
+                        </ul>
+                        <p>Если оба используют одно устройство — WMME блокирует одно из них. Радио в браузере пропадает, chime может не играть.</p>
+                    </div>
+                </details>
+
+                <div class="player-row">
+                    <div class="output-grid">
+                        <div class="output-panel">
+                            <div class="output-panel-title">Веб-плеер (этот браузер)</div>
+                            <div class="player-row">
+                                <button type="button" id="btn-stream-connect" class="btn btn-start">▶ Подключить</button>
+                                <audio id="player" controls></audio>
+                            </div>
+                            <div class="stream-link-panel">
+                                <div class="stream-link-title">🔗 Публичная ссылка на поток</div>
+                                <div class="hint" style="margin-bottom:8px;">
+                                    Откройте в браузере, VLC или мобильном плеере — эфир будет слышен без входа в панель.
+                                </div>
+                                <div id="stream-url-list" class="stream-url-list">
+                                    <div class="stream-url-empty">Загрузка...</div>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <label>Устройство вывода
+                                    <select id="sink-select"><option value="">По умолчанию</option></select>
+                                </label>
+                                <label>&nbsp;
+                                    <button type="button" id="btn-refresh-sinks" class="btn btn-refresh">🔄 Обновить</button>
+                                </label>
+                            </div>
+                            <div class="hint">Выбор устройства в браузере работает на <code>localhost</code> или HTTPS.</div>
+                        </div>
+
+                        {% if role == 'admin' %}
+                        <div class="output-panel">
+                            <div class="output-panel-title">Аппаратный выход (сервер)</div>
+                            <div class="form-row">
+                                <label>Устройство воспроизведения
+                                    <select id="hw-output-select"><option value="">Отключён</option></select>
+                                </label>
+                                <label>&nbsp;
+                                    <button type="button" id="btn-refresh-hw-outputs" class="btn btn-refresh">🔄 Обновить</button>
+                                </label>
+                            </div>
+                            <button type="button" id="btn-apply-hw-output" class="btn btn-save">✅ Применить</button>
+                            <div class="hint">Используется для офисного усилителя, SIP/ЛСО, виртуального кабеля.</div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <span id="output-status" class="upload-status"></span>
+                </div>
+            </div>
+
+        </div><!-- /.stack-system -->
+
+        <footer class="footer">
             © 2026 Andrey Geben · <a href="https://github.com/andrey-geben/office_radio_overlay" target="_blank">Office Radio Overlay</a> · MIT License · v1.0.0
         </footer>
     </main>
 
-        <aside class="evraz-speaker evraz-speaker-right">
+    <!-- ============ ПРАВАЯ КОЛОНКА ============ -->
+    <aside class="evraz-speaker evraz-speaker-right">
         <div class="speaker-cabinet">
             <div class="speaker-badge"><b>ZVUK</b></div>
-            <div class="speaker-tweeter"></div>
-            <div class="speaker-mid"></div>
-            <div class="speaker-woofer"></div>
-            <div class="speaker-badge"></div>
+            <div class="speaker-grille">
+                <div class="speaker-tweeter"></div>
+                <div class="speaker-mid"></div>
+                <div class="speaker-woofer"></div>
+            </div>
+            <div class="speaker-foot"></div>
         </div>
     </aside>
 </div>
@@ -313,7 +340,7 @@
                 </label>
                 <label>&nbsp;</label>
             </div>
-                        <div class="form-row">
+            <div class="form-row">
                 <label>Дни недели <span style="color:#8a7048;font-size:0.78rem;">(не отмечено = все дни)</span></label>
                 <label>&nbsp;</label>
             </div>
@@ -443,7 +470,8 @@
             </div>
             <div id="scan-results" class="scan-results"></div>
         </div>
-                <h3 style="margin-top:24px;">📟 DTMF-метки (автоматизация вещания)</h3>
+
+        <h3 style="margin-top:24px;">📟 DTMF-метки (автоматизация вещания)</h3>
         <div class="hint" style="margin-bottom:12px;">
             Добавьте метки, которые нужно слушать в эфире. Например, <b>3957</b> для Русского Радио.
             При совпадении автоматически запустится служебное объявление. Поддерживаются цифры <code>0-9</code>, а также <code>* # A B C D</code> (2–10 символов).
@@ -453,6 +481,7 @@
             <label>Новая метка <input type="text" id="new-dtmf-label" placeholder="3957" maxlength="10"></label>
             <label>&nbsp;<button type="button" id="btn-add-dtmf-label" class="btn btn-add">➕ Добавить метку</button></label>
         </div>
+
         <form id="settings-form">
             <div class="form-row">
                 <label>CTCSS Гц <input type="number" step="0.1" name="tone_freq" id="tone_freq"></label>
@@ -515,12 +544,13 @@
                 <tr><td colspan="5" class="empty">Загрузка...</td></tr>
             </tbody>
         </table>
+
         <h3 style="margin-top:24px;">🎨 Интерфейс</h3>
         <div class="form-row">
             <label>Цветовая схема
                 <select id="theme-select">
-                    <option value="dark">Тёмная (EVRAZ Classic)</option>
-                    <option value="light">Светлая (EVRAZ Light)</option>
+                    <option value="dark">Тёмная (Black Technics)</option>
+                    <option value="light">Светлая (Silver Technics)</option>
                 </select>
             </label>
             <label>&nbsp;</label>
@@ -539,7 +569,7 @@
     <div class="modal-backdrop" data-close></div>
     <div class="modal-content">
         <button class="modal-close" data-close>×</button>
-                <h2>📞 SIP / ЛСО</h2>
+        <h2>📞 SIP / ЛСО</h2>
 
         <details class="help-block">
             <summary>❓ Как настроить SIP-подключение</summary>
@@ -591,7 +621,8 @@
                 <input type="checkbox" id="auto_start_sip">
                 Автозапускать SIP
             </label>
-                <div class="form-row">
+        </div>
+        <div class="form-row">
             <label class="checkbox-row" style="align-self:end; margin-bottom:8px;">
                 <input type="checkbox" id="sip_chime_enabled" checked>
                 🔔 Сигнал внимания перед соединением (плим-блим)
@@ -605,7 +636,6 @@
         <div class="hint" style="margin-bottom:12px;">
             При входящем звонке радио плавно затухает, играет «плим-блим», затем SIP-звонок соединяется.
             Тест играет сигнал прямо сейчас — убедитесь, что радио/объявление приостановится.
-        </div>
         </div>
         <div class="buttons">
             <button type="button" id="btn-sip-save" class="btn btn-save">💾 Сохранить</button>
@@ -623,7 +653,7 @@
         </div>
     </div>
 </div>
-<!-- ============ МОДАЛКА: РАСПИСАНИЕ ============ -->
+
 <!-- ============ МОДАЛКА: СПИСОК РАСПИСАНИЙ ============ -->
 <div class="modal" id="modal-schedules">
     <div class="modal-backdrop" data-close></div>
@@ -702,7 +732,6 @@
         <span id="sched-edit-msg" class="upload-status"></span>
     </div>
 </div>
-
 {% endif %}
 
 <!-- ============ МОДАЛКА: О ПРОГРАММЕ ============ -->

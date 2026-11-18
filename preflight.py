@@ -4,8 +4,8 @@
 
 import os
 import sys
-import shutil
 import ctypes
+import platform
 import traceback
 
 import config
@@ -25,10 +25,35 @@ def get_last_results():
 
 def _check_os():
     try:
-        import platform
-        return INFO, f"Windows: {platform.release()} ({platform.version()})"
+        rel = platform.release()
+        ver = platform.version()
+        if os.name == "nt" and hasattr(sys, "getwindowsversion"):
+            wv = sys.getwindowsversion()
+            if wv.major == 10 and wv.build >= 22000:
+                rel = "11"
+            ver = f"{wv.major}.{wv.minor}.{wv.build}"
+        return INFO, f"Windows: {rel} ({ver})"
     except Exception:
         return INFO, "Windows (версия не определена)"
+
+
+def _check_vc_runtime():
+    """Проверяет наличие VC++ Redistributable и UCRT на чистых Windows 7/8/10 LTSC."""
+    if os.name != "nt":
+        return INFO, "Runtime: non-Windows"
+    missing = []
+    for dll in ("vcruntime140.dll", "ucrtbase.dll"):
+        try:
+            ctypes.WinDLL(dll)
+        except OSError:
+            missing.append(dll)
+    if missing:
+        return CRITICAL, (
+            f"В системе отсутствуют системные библиотеки: {', '.join(missing)}. "
+            "Установите Microsoft Visual C++ Redistributable 2015–2022 (x64) "
+            "и обновление Universal C Runtime (KB2999226 для Windows 7/8.1)."
+        )
+    return INFO, "Windows C/C++ Runtime: OK"
 
 
 def _check_portaudio():
@@ -48,6 +73,20 @@ def _check_portaudio():
         return CRITICAL, f"PortAudio не инициализируется: {e}"
 
 
+def _check_resampler():
+    try:
+        import soxr  # noqa: F401
+        return INFO, "Ресемплер soxr: OK"
+    except Exception:
+        if config.SAMPLE_RATE != 48000:
+            return WARNING, (
+                f"Библиотека soxr не установлена, а SAMPLE_RATE={config.SAMPLE_RATE} Гц. "
+                "При выводе на устройства 48000 Гц (включая VB-Cable) возможны искажения звука. "
+                "Установите: pip install soxr"
+            )
+        return INFO, "Ресемплер soxr: не требуется (48000 Гц)"
+
+
 def _check_pjsua2():
     try:
         import pjsua2  # noqa: F401
@@ -61,20 +100,13 @@ def _check_pjsua2():
 
 
 def _check_ffmpeg():
-    candidates = []
-    if getattr(sys, "frozen", False):
-        exe_dir = os.path.dirname(sys.executable)
-        candidates += [os.path.join(exe_dir, "ffmpeg.exe"),
-                       os.path.join(exe_dir, "ffmpeg")]
-    here = os.path.dirname(os.path.abspath(__file__))
-    candidates += [os.path.join(here, "ffmpeg.exe"),
-                   os.path.join(here, "ffmpeg")]
-    for p in candidates:
-        if os.path.isfile(p) and os.access(p, os.X_OK):
-            return INFO, f"FFmpeg: {p}"
-    p = shutil.which("ffmpeg")
+    try:
+        from audio_capture import _find_ffmpeg
+        p = _find_ffmpeg()
+    except Exception:
+        p = None
     if p:
-        return INFO, f"FFmpeg: {p} (PATH)"
+        return INFO, f"FFmpeg: {p}"
     return WARNING, (
         "FFmpeg не найден. Радио из интернета работать не будет. "
         "Скачайте ffmpeg.exe (https://ffmpeg.org/download.html) "
@@ -109,6 +141,13 @@ def _check_chime():
     if not os.path.isabs(path):
         path = os.path.join(settings_store.BASE_DIR, path)
     if not os.path.isfile(path):
+        try:
+            from make_chime import generate_chime
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            generate_chime(path, sample_rate=config.SAMPLE_RATE)
+        except Exception:
+            pass
+    if not os.path.isfile(path):
         return WARNING, (
             f"chime.wav не найден: {path}. "
             "Сигнал внимания перед звонком играть не будет."
@@ -141,7 +180,7 @@ def _check_writable():
 
 
 def _check_path_characters():
-    """Кириллица или пробелы в пути могут сломать FFmpeg."""
+    """Кириллица в пути может сломать FFmpeg или PJSIP."""
     try:
         path = settings_store.BASE_DIR
         if any(ord(c) > 127 for c in path):
@@ -159,12 +198,14 @@ def _check_path_characters():
 def run_checks():
     checks = [
         _check_os,
+        _check_vc_runtime,
+        _check_writable,
         _check_portaudio,
+        _check_resampler,
         _check_pjsua2,
         _check_ffmpeg,
         _check_vb_cable,
         _check_chime,
-        _check_writable,
         _check_path_characters,
     ]
     global _last_results
