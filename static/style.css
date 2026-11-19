@@ -5486,3 +5486,153 @@ input[type="file"]::file-selector-button:hover {
         inset 0 0 18px rgba(150, 215, 255, 0.45),
         inset 0 -8px 18px rgba(0, 0, 0, 0.55);
 }
+
+/* =====================================================================
+   ПРИБОРЫ В СТИЛЕ MCINTOSH — ВО ВСЕХ ТЕМАХ
+   Корпус, стекло, риски и стрелка задаются переменными темы.
+   ===================================================================== */
+:root, [data-theme="dark"] {
+    --meter-housing: #120e0a;
+    --meter-bezel: #4a4238;
+    --meter-bezel-hi: rgba(255, 220, 160, 0.30);
+    --meter-face-1: #3f8fd8;
+    --meter-face-2: #17456f;
+    --meter-face-3: #04090f;
+    --meter-scale: #cfe4ff;
+    --meter-needle: #ff4a3a;
+    --meter-pivot: #b08d57;
+    --meter-glow: rgba(140, 210, 255, 0.35);
+}
+[data-theme="light"] {
+    --meter-housing: #cfc8b8;
+    --meter-bezel: #8f887a;
+    --meter-bezel-hi: #fffdf7;
+    --meter-face-1: #5aa0e0;
+    --meter-face-2: #235f92;
+    --meter-face-3: #0a1a2a;
+    --meter-scale: #eaf6ff;
+    --meter-needle: #c0392b;
+    --meter-pivot: #6a6860;
+    --meter-glow: rgba(120, 170, 220, 0.28);
+}
+[data-theme="winamp"] {
+    --meter-housing: #0a0a0a;
+    --meter-bezel: #7c7c7c;
+    --meter-bezel-hi: #d8d8d8;
+    --meter-face-1: #12a352;
+    --meter-face-2: #076a30;
+    --meter-face-3: #02150a;
+    --meter-scale: #b6ffcf;
+    --meter-needle: #ff3b30;
+    --meter-pivot: #9c9c9c;
+    --meter-glow: rgba(0, 255, 90, 0.26);
+}
+[data-theme="studio"] {
+    --meter-housing: #06090d;
+    --meter-bezel: #3d4855;
+    --meter-bezel-hi: rgba(255, 255, 255, 0.20);
+    --meter-face-1: #4f9fe8;
+    --meter-face-2: #1c4f7d;
+    --meter-face-3: #04101c;
+    --meter-scale: #d3ebff;
+    --meter-needle: #ff5b5b;
+    --meter-pivot: #c9a14a;
+    --meter-glow: rgba(74, 168, 255, 0.32);
+}
+[data-theme="military"] {
+    --meter-housing: #0d0e07;
+    --meter-bezel: #5a5f47;
+    --meter-bezel-hi: rgba(255, 245, 200, 0.18);
+    --meter-face-1: #e0a144;
+    --meter-face-2: #8a5a1c;
+    --meter-face-3: #1a1206;
+    --meter-scale: #ffe6b8;
+    --meter-needle: #ff5a3a;
+    --meter-pivot: #c9a14a;
+    --meter-glow: rgba(255, 179, 71, 0.30);
+}
+[data-theme="hifi"] {
+    --meter-housing: #0a0704;
+    --meter-bezel: #b08d57;
+    --meter-bezel-hi: #f6e7c4;
+    --meter-face-1: #ffc36b;
+    --meter-face-2: #a86a22;
+    --meter-face-3: #2b1708;
+    --meter-scale: #fff2da;
+    --meter-needle: #b3261e;
+    --meter-pivot: #e6dccb;
+    --meter-glow: rgba(255, 182, 77, 0.32);
+}
+[data-theme="terminal"] {
+    --meter-housing: #000000;
+    --meter-bezel: #1d7a33;
+    --meter-bezel-hi: rgba(51, 255, 102, 0.25);
+    --meter-face-1: #33ff66;
+    --meter-face-2: #0f7a33;
+    --meter-face-3: #01140a;
+    --meter-scale: #a6ffbf;
+    --meter-needle: #d8ffe4;
+    --meter-pivot: #33ff66;
+    --meter-glow: rgba(51, 255, 102, 0.30);
+}
+[data-theme="ivory"] {
+    --meter-housing: #101720;
+    --meter-bezel: #b08d57;
+    --meter-bezel-hi: #f4e6c8;
+    --meter-face-1: #4b9fe0;
+    --meter-face-2: #1b5a8f;
+    --meter-face-3: #071c30;
+    --meter-scale: #d6ecff;
+    --meter-needle: #ff4a3a;
+    --meter-pivot: #d9b25f;
+    --meter-glow: rgba(150, 215, 255, 0.45);
+}
+
+.meter-housing {
+    display: block;
+    background: linear-gradient(180deg, var(--meter-housing) 0%, #000 100%);
+    border: 2px solid var(--meter-bezel);
+    border-radius: 4px;
+    padding: 7px 9px 5px;
+    box-shadow:
+        inset 0 1px 0 var(--meter-bezel-hi),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.65),
+        inset 0 10px 22px rgba(0, 0, 0, 0.85),
+        0 2px 5px rgba(0, 0, 0, 0.35);
+    position: relative;
+}
+.meter-housing::after {
+    content: "";
+    position: absolute;
+    inset: 3px 4px auto 4px;
+    height: 38%;
+    border-radius: 3px 3px 40% 40%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
+    pointer-events: none;
+}
+.meter-housing .meter {
+    background: radial-gradient(ellipse at 50% 118%,
+        var(--meter-face-1) 0%, var(--meter-face-2) 48%, var(--meter-face-3) 100%);
+    border-radius: 2px;
+    box-shadow: inset 0 0 16px var(--meter-glow);
+    padding: 3px 4px 1px;
+}
+.meter-ticks { display: block; }
+.meter .meter-ticks line {
+    stroke: var(--meter-scale);
+    opacity: 0.95;
+}
+.meter > path {
+    stroke: var(--meter-scale);
+    stroke-width: 1.2;
+}
+.meter > line {
+    stroke: var(--meter-needle);
+    stroke-width: 1.7;
+    filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.55));
+}
+.meter circle {
+    fill: var(--meter-pivot);
+    stroke: rgba(0, 0, 0, 0.6);
+    stroke-width: 0.6;
+}
