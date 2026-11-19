@@ -4434,3 +4434,251 @@ input[type="file"]::file-selector-button:hover {
     border: 1px solid var(--btn-border, #6b5a3a);
     box-shadow: 0 0 0 1px rgba(255, 210, 130, 0.15) inset;
 }
+
+
+/* =====================================================================
+   ТЕМА WINAMP (классический Winamp 2.x)
+   Плоские серые панели с фаской, синий заголовок, зелёный LCD,
+   квадратные кнопки, зелёный эквалайзер.
+   ===================================================================== */
+[data-theme="winamp"] {
+    --bg-body: #2b2b2b;
+    --chassis: #232323;
+    --chassis-edge: #6e6e6e;
+    --module-a: #3c3c3c;
+    --module-b: #303030;
+    --module-border: #0d0d0d;
+    --module-hi: #6e6e6e;
+    --panel: #1a1a1a;
+    --panel-hi: #262626;
+
+    --text: #dcdcdc;
+    --text-dim: #a8a8a8;
+    --text-mute: #7c7c7c;
+    --text-strong: #00ff6a;
+
+    --accent: #00ff5a;
+    --accent-2: #00b347;
+    --accent-glow: rgba(0, 255, 90, 0.35);
+
+    --display-bg: #000000;
+    --display-fg: #33ff66;
+    --display-glow: 0 0 6px rgba(51, 255, 102, 0.55);
+
+    --led-red: #ff3b30;
+    --led-green: #35ff5a;
+    --led-amber: #ffd23f;
+    --led-blue: #6cb8ff;
+
+    --btn-face: linear-gradient(180deg, #6f6f6f 0%, #3c3c3c 55%, #2c2c2c 100%);
+    --btn-face-hover: linear-gradient(180deg, #808080 0%, #4c4c4c 55%, #383838 100%);
+    --btn-border: #0b0b0b;
+    --btn-shadow:
+        inset 1px 1px 0 rgba(255, 255, 255, 0.35),
+        inset -1px -1px 0 rgba(0, 0, 0, 0.55);
+
+    --chrome: #c9c9c9;
+    --chrome-hi: #efefef;
+    --divider: #131313;
+
+    --input-bg: #000000;
+    --input-fg: #33ff66;
+    --input-border: #5c5c5c;
+
+    --ok-color: #35ff5a;
+    --warn-color: #ffd23f;
+}
+
+[data-theme="winamp"] body {
+    font-family: Tahoma, Verdana, "Segoe UI", sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.2px;
+    background: #2b2b2b;
+}
+
+/* Заголовок окна — синий градиент Winamp */
+[data-theme="winamp"] .topbar,
+[data-theme="winamp"] header.topbar,
+[data-theme="winamp"] .stack-unit.topbar {
+    background: linear-gradient(180deg, #5a8fd6 0%, #2f5da0 45%, #14294d 100%) !important;
+    border-bottom: 1px solid #06101f;
+    box-shadow:
+        inset 1px 1px 0 rgba(255, 255, 255, 0.45),
+        inset -1px -1px 0 rgba(0, 0, 0, 0.45);
+    color: #f2f6ff;
+    padding: 8px 12px;
+    border-radius: 0;
+}
+
+[data-theme="winamp"] header.topbar h1 {
+    color: #ffffff;
+    font-size: 13px;
+    letter-spacing: 1.4px;
+    text-shadow: 0 1px 0 #000;
+    margin: 0;
+    text-transform: uppercase;
+}
+
+[data-theme="winamp"] .topbar a,
+[data-theme="winamp"] .topbar .user,
+[data-theme="winamp"] .topbar .role {
+    color: #eaf1ff;
+    text-shadow: 0 1px 0 #06101f;
+}
+
+[data-theme="winamp"] .brand,
+[data-theme="winamp"] .brand span {
+    color: #ffffff;
+    text-shadow: 0 1px 0 #000;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+/* Панели — плоские, с фаской как в Winamp */
+[data-theme="winamp"] .stack-unit,
+[data-theme="winamp"] .output-panel,
+[data-theme="winamp"] .modal-content,
+[data-theme="winamp"] .ann-table,
+[data-theme="winamp"] .card {
+    background: linear-gradient(180deg, #424242 0%, #343434 100%);
+    border: 1px solid #0d0d0d;
+    border-radius: 0;
+    box-shadow:
+        inset 1px 1px 0 #757575,
+        inset -1px -1px 0 #1a1a1a;
+}
+
+[data-theme="winamp"] .stack-unit h2,
+[data-theme="winamp"] .stack-system h2,
+[data-theme="winamp"] .output-panel-title {
+    color: #e8e8e8;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+/* Кнопки — квадратные, с фаской */
+[data-theme="winamp"] .btn,
+[data-theme="winamp"] .transport-btn,
+[data-theme="winamp"] .btn-sm,
+[data-theme="winamp"] .btn-refresh,
+[data-theme="winamp"] .btn-save,
+[data-theme="winamp"] .btn-start,
+[data-theme="winamp"] .btn-stop {
+    border-radius: 0;
+    border: 1px solid #0b0b0b;
+    box-shadow: var(--btn-shadow);
+    color: #f0f0f0;
+    text-shadow: 0 1px 0 #000;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    padding: 6px 10px;
+}
+
+[data-theme="winamp"] .btn:active,
+[data-theme="winamp"] .transport-btn:active {
+    box-shadow:
+        inset 1px 1px 0 #1a1a1a,
+        inset -1px -1px 0 #757575;
+    transform: translateY(1px);
+}
+
+/* LCD-дисплеи и значения */
+[data-theme="winamp"] .value,
+[data-theme="winamp"] #onair-text,
+[data-theme="winamp"] #dtmf-display,
+[data-theme="winamp"] .output-level,
+[data-theme="winamp"] .display-value {
+    color: var(--display-fg);
+    font-family: Consolas, "Courier New", monospace;
+    text-shadow: var(--display-glow);
+}
+
+[data-theme="winamp"] .label {
+    color: #a0a0a0;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.8px;
+}
+
+/* Поля ввода — чёрные, зелёный текст */
+[data-theme="winamp"] input[type="text"],
+[data-theme="winamp"] input[type="password"],
+[data-theme="winamp"] input[type="number"],
+[data-theme="winamp"] select,
+[data-theme="winamp"] textarea {
+    border-radius: 0;
+    background: #000;
+    color: var(--input-fg);
+    border: 1px solid #5c5c5c;
+    box-shadow: inset 1px 1px 0 #000, inset -1px -1px 0 #6a6a6a;
+    font-family: Consolas, "Courier New", monospace;
+}
+
+/* Таблицы */
+[data-theme="winamp"] .ann-table th {
+    background: #2b2b2b;
+    color: #b8b8b8;
+    border-bottom: 1px solid #0d0d0d;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.6px;
+}
+
+[data-theme="winamp"] .ann-table td {
+    border-bottom: 1px solid #2b2b2b;
+    color: #dcdcdc;
+}
+
+/* Индикаторы-лампочки остаются круглыми, но плоскими */
+[data-theme="winamp"] .led {
+    box-shadow: 0 0 4px currentColor;
+}
+
+/* Эквалайзер и графики — тёмная сетка */
+[data-theme="winamp"] #eq-canvas {
+    background: #000;
+    border: 1px solid #0d0d0d;
+    box-shadow: inset 1px 1px 0 #000, inset -1px -1px 0 #5a5a5a;
+}
+
+/* Декоративные колонки — в серый цвет */
+[data-theme="winamp"] .evraz-speaker .speaker-cabinet {
+    filter: grayscale(1) brightness(0.75);
+}
+
+/* Радиокнопки/чекбоксы — квадратные */
+[data-theme="winamp"] input[type="checkbox"],
+[data-theme="winamp"] input[type="radio"] {
+    accent-color: #00ff5a;
+}
+
+/* Поля-строки в духе Winamp */
+[data-theme="winamp"] .form-row label {
+    color: #b4b4b4;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Модалки */
+[data-theme="winamp"] .modal-backdrop {
+    background: rgba(0, 0, 0, 0.75);
+}
+
+/* Мастер первого запуска */
+[data-theme="winamp"] #setup-wizard {
+    box-shadow:
+        inset 1px 1px 0 #757575,
+        inset -1px -1px 0 #1a1a1a;
+    border: 1px solid #0d0d0d;
+}
+
+[data-theme="winamp"] header.topbar h1 {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 4px !important;
+}

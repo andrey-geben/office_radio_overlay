@@ -13,7 +13,8 @@
                 try { localStorage.setItem('evraz_theme', forced); } catch (e) {}
             }
             var t = forced || localStorage.getItem('evraz_theme') || 'dark';
-            document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+    if (t !== 'light' && t !== 'winamp') t = 'dark';
+            document.documentElement.setAttribute('data-theme', (t === 'light' || t === 'winamp') ? t : 'dark');
         })();
     </script>
     <link rel="stylesheet" href="/static/style.css">
@@ -70,13 +71,20 @@
     (function () {
         var btn = document.getElementById('login-theme');
         if (!btn) return;
+        var THEMES = ['dark', 'light', 'winamp'];
+        function icon(t) {
+            return t === 'winamp' ? '🎵' : (t === 'light' ? '☀' : '☾');
+        }
         var cur = document.documentElement.getAttribute('data-theme') || 'dark';
-        btn.textContent = cur === 'light' ? '☀' : '☾';
+        btn.textContent = icon(cur);
+        btn.title = 'Тема: ' + cur + ' (нажмите, чтобы сменить)';
         btn.onclick = function () {
-            var next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+            var now = document.documentElement.getAttribute('data-theme') || 'dark';
+            var next = THEMES[(THEMES.indexOf(now) + 1) % THEMES.length];
             document.documentElement.setAttribute('data-theme', next);
             try { localStorage.setItem('evraz_theme', next); } catch (e) {}
-            btn.textContent = next === 'light' ? '☀' : '☾';
+            btn.textContent = icon(next);
+            btn.title = 'Тема: ' + next;
         };
     })();
 </script>
