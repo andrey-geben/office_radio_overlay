@@ -46,6 +46,7 @@ let fallbackInitialized = false;
 let lastHistogram = null;
 let lastSpectrum = null;
 let streamConnected = false;
+let netSpeedMbps = 100;   // скорость сетевой карты, приходит в /api/status
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({
@@ -275,8 +276,17 @@ function renderMeters(state) {
 
     const bps = state.network_bps || 0;
     const kb = bps / 1024;
-    setMeter('needle-net', kb, 0, 64);
+    // Шкала NET = скорость линка: 100 Мбит -> 100%, 1 Гбит -> 100%.
+    // Мбит/с в КБ/с: *1000/8 = *125.
+    const netMaxKb = Math.max(1, netSpeedMbps * 125);
+    setMeter('needle-net', kb, 0, netMaxKb);
     $('net-val').textContent = bps < 1024 ? bps : kb.toFixed(1);
+    const unit = $('net-unit');
+    if (unit) {
+        unit.textContent = netSpeedMbps >= 1000
+            ? 'KB/s · 1 Гбит/с'
+            : 'KB/s · ' + netSpeedMbps + ' Мбит/с';
+    }
 }
 function renderOutputFlow(state) {
     const typeEl = $('of-type');
@@ -1021,6 +1031,7 @@ async function refreshAll() {
         if (!sr.ok || !ar.ok) throw new Error('HTTP ' + sr.status);
 
         const statusData = await sr.json();
+        if (statusData.net_speed_mbps) netSpeedMbps = Number(statusData.net_speed_mbps) || 100;
         const { state, settings } = statusData;
         const { items } = await ar.json();
 

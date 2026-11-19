@@ -117,6 +117,52 @@ def _ensure_chime():
         print(f"[boot] Не удалось сгенерировать chime: {e}")
 
 
+_net_speed_cache = {"ts": 0.0, "mbps": 0}
+
+
+def _net_link_speed_mbps(ttl: float = 60.0) -> int:
+    """Скорость активной сетевой карты в Мбит/с (для шкалы NET).
+
+    Берём максимальную скорость среди физических интерфейсов, которые
+    подняты и имеют IPv4. Виртуальные (Hyper-V, VMware, loopback) и
+    туннели пропускаем, иначе шкала врёт.
+    """
+    import time as _time
+    now = _time.time()
+    if now - _net_speed_cache["ts"] < ttl and _net_speed_cache["mbps"]:
+        return _net_speed_cache["mbps"]
+
+    skip = ("loopback", "isatap", "teredo", "vethernet", "hyper-v",
+            "vmware", "virtualbox", "vbox", "tap-", "tun", "ppp")
+    best = 0
+    try:
+        import psutil
+        import socket as _socket
+        addrs = psutil.net_if_addrs()
+        stats = psutil.net_if_stats()
+        for name, st in stats.items():
+            lname = name.lower()
+            if not st.isup or st.speed <= 0:
+                continue
+            if any(k in lname for k in skip):
+                continue
+            has_ipv4 = any(
+                a.family == _socket.AF_INET and not a.address.startswith("127.")
+                for a in addrs.get(name, [])
+            )
+            if not has_ipv4:
+                continue
+            best = max(best, int(st.speed))
+    except Exception:
+        best = 0
+
+    _net_speed_cache["mbps"] = best
+    _net_speed_cache["ts"] = now
+    if best:
+        print(f"[net] Скорость сетевой карты: {best} Мбит/с")
+    return best
+
+
 def _server_addresses():
     """IP-адреса самой серверной машины (чтобы узнать «свой» клиент)."""
     import socket
@@ -371,6 +417,7 @@ def api_status():
         "settings": settings,
         "outputs_count": len(outputs),
         "client_is_server": _client_is_server(),
+        "net_speed_mbps": _net_link_speed_mbps(),
         "web_player_allowed": allowed,
         "web_player_blocked_reason": reason,
     })
