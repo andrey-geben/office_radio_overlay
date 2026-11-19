@@ -613,7 +613,10 @@ body::before {
 .meter {
 
     width: 100%;
-    max-height: 55px;
+    height: auto;
+    /* Раньше стоял max-height: 55px — на широкой карточке шкала сжималась
+       и стрелка выглядела крошечной. Пропорции задаёт viewBox (100x60). */
+    max-height: none;
     display: block;
     margin: 0 auto;
 }
@@ -4739,26 +4742,30 @@ input[type="file"]::file-selector-button:hover {
 [data-theme="winamp"] body { background: #333333; }
 
 /* Плашки: приборы, лампы, подсказки, панели вывода */
-[data-theme="winamp"] .meter,
-[data-theme="winamp"] .gauge-wrap,
 [data-theme="winamp"] .lamp-item,
-[data-theme="winamp"] .lamp-label,
 [data-theme="winamp"] .help-block,
-[data-theme="winamp"] .player-row,
-[data-theme="winamp"] .output-panel,
-[data-theme="winamp"] .checkbox-row {
+[data-theme="winamp"] .output-panel {
     background: linear-gradient(180deg, #4b4b4b 0%, #3a3a3a 100%);
     border: 1px solid #0d0d0d;
     box-shadow: inset 1px 1px 0 #7d7d7d, inset -1px -1px 0 #1e1e1e;
     border-radius: 0;
 }
 
-[data-theme="winamp"] .lamp-item,
-[data-theme="winamp"] .lamp-label { padding: 6px 8px; }
+[data-theme="winamp"] .lamp-item { padding: 6px 8px; }
 
 [data-theme="winamp"] .help-block { padding: 6px 10px; }
 
-[data-theme="winamp"] .player-row { padding: 10px; }
+/* Приборы-стрелки не трогаем: у SVG свои пропорции (max-height 55px),
+   любые padding/бордер на .meter/.gauge-wrap сплющивают шкалу. */
+[data-theme="winamp"] .meter,
+[data-theme="winamp"] .gauge-wrap,
+[data-theme="winamp"] .meter * {
+    background: none;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+    border-radius: 0;
+}
 
 /* Фирменный зелёный в подписях и подсказках */
 [data-theme="winamp"] .label,
@@ -4821,3 +4828,8 @@ input[type="file"]::file-selector-button:hover {
     letter-spacing: 1.2px;
     text-transform: uppercase;
 }
+
+/* Winamp: шкала приборов контрастнее */
+[data-theme="winamp"] .meter path { stroke: #2f7a4a; }
+[data-theme="winamp"] .meter circle { fill: #23301f; }
+[data-theme="winamp"] .meter line { stroke: #ff4a3a; }
