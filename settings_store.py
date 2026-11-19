@@ -81,6 +81,17 @@ def load():
         return defaults
     merged = dict(defaults)
     merged.update(data)
+
+    # Миграция: раньше радио при объявлении глушилось до 0.2 — это звучало
+    # слишком громко на фоне сообщения. Меняем на новый уровень один раз.
+    if (not merged.get("ducking_level_migrated")
+            and abs(float(merged.get("ducking_level", 0)) - 0.2) < 1e-6):
+        merged["ducking_level"] = getattr(config, "DUCKING_LEVEL", 0.05)
+        merged["ducking_level_migrated"] = True
+        try:
+            save(merged)
+        except Exception:
+            pass
     return merged
 
 

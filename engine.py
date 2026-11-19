@@ -62,7 +62,8 @@ def _drain_queue(q):
 
 
 def _apply_envelope(radio_chunk, ann_chunk, pos_samples, total_samples,
-                    fade_out_samples, fade_in_samples, ducking):
+                    fade_out_samples, fade_in_samples, ducking,
+                    ann_level=1.0):
     radio = np.frombuffer(radio_chunk, dtype=np.int16).astype(np.float32)
     ann = np.frombuffer(ann_chunk, dtype=np.int16).astype(np.float32)
     n = min(len(radio), len(ann))
@@ -95,7 +96,8 @@ def _apply_envelope(radio_chunk, ann_chunk, pos_samples, total_samples,
         radio_gain[in_end] = ducking + t * (1.0 - ducking)
         ann_gain[in_end] = 1.0 - t
 
-    mixed = radio * radio_gain + ann * ann_gain
+    ann_gain = ann_gain * float(max(0.0, min(1.0, ann_level)))
+    mixed = radio * radio_gain + ann * ann_gain  # ann_level ниже
     mixed = np.clip(mixed, -32768, 32767)
     return mixed.astype(np.int16).tobytes()
 
@@ -957,6 +959,7 @@ class RadioOverlayEngine:
             fade_out_ms = self._settings["fade_out_ms"]
             fade_in_ms = self._settings["fade_in_ms"]
             ducking = self._settings["ducking_level"]
+            ann_level = self._settings.get("announcement_level", 1.0)
 
         if ann_data is None:
             self._finish_announcement()
@@ -978,7 +981,7 @@ class RadioOverlayEngine:
 
         mixed = _apply_envelope(
             chunk, ann_chunk, pos_samples, total_samples,
-            fade_out_s, fade_in_s, ducking,
+            fade_out_s, fade_in_s, ducking, ann_level,
         )
         with self._lock:
             self._ann_pos = pos + take

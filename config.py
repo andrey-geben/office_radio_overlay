@@ -25,7 +25,7 @@ DCS_THRESHOLD = 0.1
 
 # --- Микширование ---
 ANNOUNCEMENT_FILE = "assets/announcement.wav"
-DUCKING_LEVEL = 0.2
+DUCKING_LEVEL = 0.05   # радио на время объявления: 0.05 = почти тишина
 ANNOUNCEMENT_LEVEL = 1.0
 
 # --- Fade (плавное затухание / нарастание) ---

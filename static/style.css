@@ -4720,3 +4720,104 @@ input[type="file"]::file-selector-button:hover {
 .panels-row.eq-hidden #eq-canvas {
     display: none;
 }
+
+/* =====================================================================
+   WINAMP: светлее панели + фирменный зелёный в текстах и плашках
+   ===================================================================== */
+[data-theme="winamp"] {
+    --bg-body: #333333;
+    --chassis: #2c2c2c;
+    --module-a: #4a4a4a;
+    --module-b: #3b3b3b;
+    --panel: #1e1e1e;
+    --panel-hi: #2c2c2c;
+    --btn-face: linear-gradient(180deg, #7c7c7c 0%, #4a4a4a 55%, #383838 100%);
+    --btn-face-hover: linear-gradient(180deg, #8c8c8c 0%, #585858 55%, #444 100%);
+    --divider: #1a1a1a;
+}
+
+[data-theme="winamp"] body { background: #333333; }
+
+/* Плашки: приборы, лампы, подсказки, панели вывода */
+[data-theme="winamp"] .meter,
+[data-theme="winamp"] .gauge-wrap,
+[data-theme="winamp"] .lamp-item,
+[data-theme="winamp"] .lamp-label,
+[data-theme="winamp"] .help-block,
+[data-theme="winamp"] .player-row,
+[data-theme="winamp"] .output-panel,
+[data-theme="winamp"] .checkbox-row {
+    background: linear-gradient(180deg, #4b4b4b 0%, #3a3a3a 100%);
+    border: 1px solid #0d0d0d;
+    box-shadow: inset 1px 1px 0 #7d7d7d, inset -1px -1px 0 #1e1e1e;
+    border-radius: 0;
+}
+
+[data-theme="winamp"] .lamp-item,
+[data-theme="winamp"] .lamp-label { padding: 6px 8px; }
+
+[data-theme="winamp"] .help-block { padding: 6px 10px; }
+
+[data-theme="winamp"] .player-row { padding: 10px; }
+
+/* Фирменный зелёный в подписях и подсказках */
+[data-theme="winamp"] .label,
+[data-theme="winamp"] .hint,
+[data-theme="winamp"] .eq-label,
+[data-theme="winamp"] .lamp-label,
+[data-theme="winamp"] .output-panel-title,
+[data-theme="winamp"] .t-label,
+[data-theme="winamp"] .wizard-title,
+[data-theme="winamp"] .help-block summary,
+[data-theme="winamp"] .ann-table th,
+[data-theme="winamp"] .footer a,
+[data-theme="winamp"] .form-row label {
+    color: #47ff85;
+    text-shadow: 0 0 4px rgba(0, 255, 90, 0.30);
+}
+
+[data-theme="winamp"] .muted { color: #6fe9a2; }
+[data-theme="winamp"] .warn { color: #ffd23f; }
+
+/* Значения — яркий LCD */
+[data-theme="winamp"] .value,
+[data-theme="winamp"] #onair-text,
+[data-theme="winamp"] #dtmf-display,
+[data-theme="winamp"] #seconds-since-tone {
+    color: #5cff8f;
+    text-shadow: 0 0 6px rgba(0, 255, 90, 0.55);
+}
+
+/* Заголовки модулей — зелёные, как подписи на панелях Winamp */
+[data-theme="winamp"] .stack-unit > h2,
+[data-theme="winamp"] .stack-unit h2 {
+    color: #47ff85;
+    text-shadow: 0 0 5px rgba(0, 255, 90, 0.25);
+}
+
+/* Модальные окна — светлее */
+[data-theme="winamp"] .modal-content {
+    background: linear-gradient(180deg, #4a4a4a 0%, #3a3a3a 100%);
+    border: 1px solid #0d0d0d;
+    box-shadow: inset 1px 1px 0 #7d7d7d, inset -1px -1px 0 #1e1e1e;
+}
+
+/* Winamp: ещё больше зелёных подписей */
+[data-theme="winamp"] .queue-label,
+[data-theme="winamp"] .output-flow-title,
+[data-theme="winamp"] .sip-strip-hint,
+[data-theme="winamp"] .help-block summary,
+[data-theme="winamp"] .stack-unit h2,
+[data-theme="winamp"] .stack-unit h3,
+[data-theme="winamp"] .modal-content h2,
+[data-theme="winamp"] .queue-empty {
+    color: #47ff85 !important;
+    text-shadow: 0 0 4px rgba(0, 255, 90, 0.30);
+}
+
+[data-theme="winamp"] .queue-label,
+[data-theme="winamp"] .output-flow-title {
+    font-size: 11px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+}

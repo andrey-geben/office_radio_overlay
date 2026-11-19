@@ -142,15 +142,10 @@ def _client_is_server():
 def _web_player_state(settings=None):
     """Разрешён ли веб-плеер: (allowed, reason)."""
     settings = settings or engine.get_settings()
+    # На сервере плеер запрещён (двойной звук), на удалённом ПК — всегда
+    # разрешён: только там можно проверить, что сервер реально звучит.
     if _client_is_server() and not settings.get("web_player_allow_local", False):
         return False, "server"
-    try:
-        outputs = _outputs_cached()
-    except Exception:
-        outputs = []
-    hw_dev = settings.get("hw_output_device")
-    if len(outputs) <= 1 and hw_dev is not None:
-        return False, "single_output"
     return True, ""
 
 
