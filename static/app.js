@@ -112,9 +112,38 @@ function setMeter(id, value, min, max) {
 }
 
 // ==================== Эквалайзер ====================
+
+// ==================== Сворачивание эквалайзера ====================
+const EQ_HIDDEN_KEY = "evraz_eq_hidden";
+
+function applyEqHidden(hidden) {
+    const row = $("panels-row");
+    const btn = $("eq-toggle");
+    if (!row) return;
+    row.classList.toggle("eq-hidden", !!hidden);
+    if (btn) {
+        btn.textContent = hidden ? "+" : "−";
+        btn.title = hidden ? "Показать эквалайзер" : "Скрыть эквалайзер";
+    }
+}
+
+function initEqToggle() {
+    const btn = $("eq-toggle");
+    if (!btn) return;
+    let hidden = false;
+    try { hidden = localStorage.getItem(EQ_HIDDEN_KEY) === "1"; } catch (e) {}
+    applyEqHidden(hidden);
+    btn.onclick = () => {
+        const now = !$("panels-row").classList.contains("eq-hidden");
+        applyEqHidden(now);
+        try { localStorage.setItem(EQ_HIDDEN_KEY, now ? "1" : "0"); } catch (e) {}
+    };
+}
+
 function drawEqualizer(spectrum) {
     const canvas = $('eq-canvas');
     if (!canvas) return;
+    if (canvas.offsetParent === null) return;   // панель свёрнута
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.clientWidth;
     const H = canvas.clientHeight || 90;
@@ -1859,3 +1888,5 @@ refreshAll();
 bindSetupWizard();
 
 bindWebPlayerLocalToggle();
+
+initEqToggle();

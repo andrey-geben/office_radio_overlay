@@ -151,9 +151,13 @@
                     </div>
                 </div>
 
-                <div class="panels-row">
-                    <div class="equalizer-wrap">
-                        <div class="eq-label">SPECTRUM</div>
+                <div class="panels-row" id="panels-row">
+                    <div class="equalizer-wrap" id="eq-panel">
+                        <div class="eq-label">
+                            SPECTRUM
+                            <button type="button" id="eq-toggle" class="eq-toggle"
+                                    title="Скрыть/показать эквалайзер">−</button>
+                        </div>
                         <canvas id="eq-canvas" class="eq-canvas"></canvas>
                     </div>
                     <div class="equalizer-wrap">
