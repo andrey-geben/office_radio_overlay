@@ -503,8 +503,34 @@ def api_start():
 @app.route("/api/stop", methods=["POST"])
 @admin_required
 def api_stop():
-    engine.stop()
-    return jsonify({"ok": True})
+    """Остановка эфира. ?force=1 — дополнительно убить все ffmpeg процесса."""
+    import time as _time
+    force = bool(request.args.get("force"))
+    if force:
+        killed = engine.force_stop()
+    else:
+        engine.stop()
+        killed = 0
+
+    _time.sleep(0.3)
+    state = engine.get_state()
+    running = bool(state.get("running"))
+    # сколько ffmpeg осталось у нашего процесса
+    left = 0
+    try:
+        import psutil
+        for child in psutil.Process().children(recursive=True):
+            try:
+                if (child.name() or "").lower().startswith("ffmpeg"):
+                    left += 1
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    app.logger.info("СТОП: force=%s, running=%s, ffmpeg=%d, убито=%d",
+                    force, running, left, killed)
+    return jsonify({"ok": True, "running": running, "ffmpeg_left": left})
 
 
 @app.route("/api/devices")

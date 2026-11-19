@@ -662,8 +662,19 @@ class RadioOverlayEngine:
     def stop(self):
         self._stop_event.set()
         stop_active_ffmpeg()
+        # Гасим и хвост, уже отправленный в звуковую карту: иначе после
+        # СТОПа ещё полсекунды звучит радио из буфера.
+        try:
+            self._hw_output.clear()
+        except Exception:
+            pass
         if self._thread:
             self._thread.join(timeout=5)
+            if self._thread.is_alive():
+                logger.warning("Поток движка не завершился за 5 c — добиваю ffmpeg")
+                stop_active_ffmpeg()
+                self._thread.join(timeout=2)
+        self._thread = None
         with self._lock:
             self._state["running"] = False
             self._state["announcement_active"] = False
@@ -678,6 +689,29 @@ class RadioOverlayEngine:
             self._chime_pos = 0
             self._chime_call = None
         self._set_event("stopped", force=True)
+
+    def force_stop(self):
+        """Жёсткая остановка: движок + все ffmpeg-процессы приложения."""
+        self.stop()
+        killed = 0
+        try:
+            me = psutil.Process()
+            for child in me.children(recursive=True):
+                try:
+                    name = (child.name() or "").lower()
+                    if name.startswith("ffmpeg") or name.startswith("ffprobe"):
+                        child.kill()
+                        killed += 1
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        try:
+            self._hw_output.clear()
+        except Exception:
+            pass
+        logger.info("force_stop: движок остановлен, добито ffmpeg: %d", killed)
+        return killed
 
     # ==================== Утилиты ====================
     def _update_state(self, **kwargs):

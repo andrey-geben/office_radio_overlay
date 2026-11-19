@@ -1224,7 +1224,25 @@ if (IS_ADMIN) {
     };
 
     $('btn-start').onclick = async () => { await fetch('/api/start', { method: 'POST' }); refreshAll(); };
-    $('btn-stop').onclick = async () => { await fetch('/api/stop', { method: 'POST' }); refreshAll(); };
+    $('btn-stop').onclick = async () => {
+        try {
+            let r = await fetch('/api/stop', { method: 'POST' });
+            let data = await r.json();
+            if (data.running) {
+                // Движок не встал — пробуем жёсткую остановку
+                showToast('Эфир не остановился, пробую принудительно…', true);
+                r = await fetch('/api/stop?force=1', { method: 'POST' });
+                data = await r.json();
+                showToast(data.running ? 'Не удалось остановить' : 'Эфир остановлен принудительно',
+                          !!data.running);
+            } else {
+                showToast('Эфир остановлен', false);
+            }
+            refreshAll();
+        } catch (e) {
+            showToast('Ошибка остановки: ' + e.message, true);
+        }
+    };
 
     $('btn-scan-tone').onclick = async () => {
         const status = $('scan-status');
