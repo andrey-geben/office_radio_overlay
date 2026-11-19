@@ -117,6 +117,43 @@ def _ensure_chime():
         print(f"[boot] Не удалось сгенерировать chime: {e}")
 
 
+def _server_addresses():
+    """IP-адреса самой серверной машины (чтобы узнать «свой» клиент)."""
+    import socket
+    addrs = {"127.0.0.1", "::1"}
+    try:
+        for ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+            addrs.add(ip)
+    except Exception:
+        pass
+    return addrs
+
+
+def _client_is_server():
+    """Панель открыта на самой серверной машине?"""
+    ra = (request.remote_addr or "").strip()
+    if not ra:
+        return False
+    if ra in ("127.0.0.1", "::1"):
+        return True
+    return ra in _server_addresses()
+
+
+def _web_player_state(settings=None):
+    """Разрешён ли веб-плеер: (allowed, reason)."""
+    settings = settings or engine.get_settings()
+    if _client_is_server() and not settings.get("web_player_allow_local", False):
+        return False, "server"
+    try:
+        outputs = _outputs_cached()
+    except Exception:
+        outputs = []
+    hw_dev = settings.get("hw_output_device")
+    if len(outputs) <= 1 and hw_dev is not None:
+        return False, "single_output"
+    return True, ""
+
+
 def _hw_output_device_name():
     """Имя выбранного серверного устройства вывода (для PJSIP по имени)."""
     try:
@@ -270,7 +307,20 @@ def _wav_header(sample_rate, channels, bits):
 @app.route("/stream")
 @login_required
 def audio_stream():
-    """Публичный поток — без @login_required, чтобы сотрудники могли слушать без пароля."""
+    """Поток эфира для браузера оператора (только после входа).
+
+    На самой серверной машине поток закрыт: браузер там играет в то же
+    устройство, что и эфир, и получается двойной звук. Разрешается
+    настройкой web_player_allow_local.
+    """
+    _settings = engine.get_settings()
+    if _client_is_server() and not _settings.get("web_player_allow_local", False):
+        return jsonify({
+            "ok": False,
+            "error": "Веб-плеер отключён на сервере: звук пойдёт в серверное устройство. "
+                     "Разрешить можно в «Выход аудио» → «Разрешить веб-плеер на сервере».",
+        }), 403
+
     def generate():
         yield _wav_header(config.SAMPLE_RATE, config.CHANNELS, 16)
         silence = bytes(config.BLOCK_SIZE * 2)
@@ -320,12 +370,14 @@ def api_status():
     """
     outputs = _outputs_cached()
     settings = engine.get_settings()
-    hw_dev = settings.get("hw_output_device")
+    allowed, reason = _web_player_state(settings)
     return jsonify({
         "state": engine.get_state(),
         "settings": settings,
         "outputs_count": len(outputs),
-        "web_player_allowed": bool(len(outputs) > 1 or hw_dev is None),
+        "client_is_server": _client_is_server(),
+        "web_player_allowed": allowed,
+        "web_player_blocked_reason": reason,
     })
 
 
@@ -448,7 +500,8 @@ def api_settings():
     numeric = {"tone_freq", "detection_threshold", "dcs_freq", "dcs_threshold",
                "ducking_level", "announcement_level", "fade_out_ms", "fade_in_ms",
                "tone_timeout_seconds", "fallback_timeout_seconds", "fallback_retry_main_seconds"}
-    boolean = {"simulate_tone", "tone_timeout_enabled", "fallback_enabled"}
+    boolean = {"simulate_tone", "tone_timeout_enabled", "fallback_enabled",
+               "web_player_allow_local"}
     source_keys = {"radio_url", "source_type", "input_device"}
 
     filtered = {}

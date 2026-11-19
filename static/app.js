@@ -339,6 +339,9 @@ function fillForm(s) {
     if ($('simulate')) $('simulate').checked = !!s.simulate_tone;
     if ($('tone_timeout_enabled')) $('tone_timeout_enabled').checked = !!s.tone_timeout_enabled;
     if ($('fallback_enabled')) $('fallback_enabled').checked = !!s.fallback_enabled;
+    if ($('chk-web-player-local')) {
+        $('chk-web-player-local').checked = !!s.web_player_allow_local;
+    }
 }
 
 function updateSourceUI(s) {
@@ -1688,6 +1691,25 @@ function bindSetupWizard() {
     };
 }
 
+function bindWebPlayerLocalToggle() {
+    const chk = $("chk-web-player-local");
+    if (!chk) return;
+    chk.onchange = async () => {
+        try {
+            await fetch("/api/settings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ web_player_allow_local: chk.checked }),
+            });
+            showToast(chk.checked
+                ? "Веб-плеер на сервере разрешён"
+                : "Веб-плеер на сервере запрещён", false);
+        } catch (e) {
+            showToast("Ошибка: " + e.message, true);
+        }
+    };
+}
+
 function applyWebPlayerPermission(statusData) {
     // На сервере одно устройство вывода и оно выбрано -> веб-плеер
     // в панели не нужен: он может дать второй звук на той же карте.
@@ -1704,8 +1726,15 @@ function applyWebPlayerPermission(statusData) {
             note.id = "web-player-note";
             note.className = "hint";
             note.style.margin = "8px 0";
-            note.textContent = "Веб-плеер отключён: на сервере одно устройство вывода, "
-                + "эфир звучит только в нём. Подключите отдельную карту для мониторинга.";
+            const reason = statusData && statusData.web_player_blocked_reason;
+            if (reason === "server") {
+                note.textContent = "Панель открыта на самом сервере — веб-плеер отключён, "
+                    + "чтобы звук не пошёл второй раз в то же устройство. "
+                    + "Разрешить можно галочкой в «Аппаратном выходе».";
+            } else {
+                note.textContent = "Веб-плеер отключён: на сервере одно устройство вывода, "
+                    + "эфир звучит только в нём. Подключите отдельную карту для мониторинга.";
+            }
             const btn = $("btn-stream-connect");
             if (btn && btn.parentNode) btn.parentNode.insertBefore(note, btn);
         }
@@ -1814,3 +1843,5 @@ refreshAll();
 })();
 
 bindSetupWizard();
+
+bindWebPlayerLocalToggle();

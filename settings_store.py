@@ -26,6 +26,7 @@ def _defaults():
         "dcs_freq": config.DCS_TONE_FREQ,
         "dcs_threshold": config.DCS_THRESHOLD,
         "ducking_level": config.DUCKING_LEVEL,
+        "web_player_allow_local": False,
         "announcement_level": config.ANNOUNCEMENT_LEVEL,
         "fade_out_ms": config.FADE_OUT_MS,
         "fade_in_ms": config.FADE_IN_MS,
