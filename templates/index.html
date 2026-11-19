@@ -43,7 +43,6 @@
                             {% if role == 'admin' %}админ{% else %}оператор{% endif %}
                         </span>
                     </span>
-                    <button type="button" id="theme-toggle" class="btn btn-logout" title="Переключить тему (тёмная / светлая)">☾</button>
                     <a href="/change-password" class="btn btn-logout">🔑 Пароль</a>
                     <form method="post" action="/logout" class="inline-form">
                         <button type="submit" class="btn btn-logout">Выйти</button>
@@ -80,6 +79,11 @@
                 </button>
 
                 <div class="transport-knob-group">
+                    <div class="transport-knob-item theme-knob-item">
+                        <div class="transport-knob-label">ТЕМА</div>
+                        <button type="button" id="theme-toggle" class="theme-knob"
+                                title="Переключить тему оформления">☾</button>
+                    </div>
                     <div class="transport-knob-item">
                         <div class="transport-knob-label">VOL</div>
                         <div class="transport-knob"></div>
