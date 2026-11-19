@@ -87,13 +87,17 @@ def _list_devices(ep, max_devices=128):
 
 
 def _find_output_device(ep, name_substrings):
-    subs = [s.lower() for s in name_substrings]
-    for idx, name, _in_c, out_c in _list_devices(ep):
-        if out_c <= 0:
-            continue
-        nl = name.lower()
-        for s in subs:
-            if s in nl:
+    """Ищет устройство вывода PJSIP по имени: сначала точное, потом по подстроке."""
+    subs = [s.lower().strip() for s in name_substrings if s and s.strip()]
+    devices = [(idx, name) for idx, name, _i, out_c in _list_devices(ep) if out_c > 0]
+
+    for s in subs:
+        for idx, name in devices:
+            if name.lower().strip() == s:
+                return idx
+    for s in subs:
+        for idx, name in devices:
+            if s in name.lower():
                 return idx
     return None
 
@@ -234,6 +238,14 @@ def cmd_init(msg):
         except Exception:
             target = None
 
+    # Имя серверного устройства (из настроек) важнее: индексы у PJSIP и
+    # sounddevice разные, а имя одно и то же.
+    playback_name = (msg.get("playback_device_name") or "").strip()
+    if playback_name:
+        by_name = _find_output_device(ep, [playback_name])
+        if by_name is not None:
+            target = by_name
+
     if target is None:
         target = _find_output_device(ep, ["cable in"])
     if target is None:
@@ -336,8 +348,39 @@ def cmd_stop(msg):
     sys.exit(0)
 
 
+def cmd_set_playback(msg):
+    """Сменить устройство воспроизведения на лету (без перезапуска SIP)."""
+    ep = _state.get("ep")
+    if ep is None:
+        send("error", where="set_playback", error="endpoint not initialized")
+        return
+
+    name = (msg.get("playback_device_name") or "").strip()
+    target = None
+    if msg.get("playback_device") is not None:
+        try:
+            target = int(msg["playback_device"])
+        except Exception:
+            target = None
+    if target is None and name:
+        target = _find_output_device(ep, [name])
+    if target is None:
+        send("error", where="set_playback", error=f"устройство не найдено: {name!r}")
+        return
+
+    try:
+        ep.audDevManager().setPlaybackDev(int(target))
+        actual = ep.audDevManager().getPlaybackDev()
+        _state["playback_dev"] = target
+        log(f"playback switch={target} actual={actual}")
+        send("playback_set", dev_id=target, actual=actual)
+    except Exception as e:
+        send("error", where="set_playback", error=str(e))
+
+
 COMMANDS = {
     "init": cmd_init,
+    "set_playback": cmd_set_playback,
     "register": cmd_register,
     "answer": cmd_answer,
     "hangup": cmd_hangup,

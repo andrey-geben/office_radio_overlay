@@ -208,6 +208,41 @@
             </div>
 
             <!-- ==== МОДУЛЬ 4: ВЫХОД АУДИО ==== -->
+            <!-- ==== МАСТЕР ПЕРВОГО ЗАПУСКА ==== -->
+            <div class="card stack-unit" id="setup-wizard" style="display:none;">
+                <h2>🚀 Мастер первого запуска</h2>
+                <div class="hint" style="margin-bottom:10px;">
+                    Пока не выбрано серверное устройство вывода, эфир не звучит в помещении.
+                    Пройдите три шага — потом этот блок исчезнет.
+                </div>
+                <ol class="wizard-steps">
+                    <li>
+                        <div class="wizard-title">1. Устройство вывода сервера</div>
+                        <div class="form-row">
+                            <select id="wiz-output" style="min-width:260px;">
+                                <option value="">Загрузка…</option>
+                            </select>
+                            <button type="button" id="wiz-apply" class="btn btn-primary">Применить</button>
+                            <button type="button" id="wiz-refresh" class="btn btn-refresh">🔄 Обновить</button>
+                        </div>
+                        <div class="hint" id="wiz-apply-note"></div>
+                    </li>
+                    <li>
+                        <div class="wizard-title">2. Проверка сигнала</div>
+                        <div class="form-row">
+                            <button type="button" id="wiz-test" class="btn">🔔 Проверить сигнал</button>
+                            <span class="hint">Должно быть слышно в помещении.</span>
+                        </div>
+                    </li>
+                    <li>
+                        <div class="wizard-title">3. Запуск эфира</div>
+                        <div class="form-row">
+                            <button type="button" id="wiz-start" class="btn btn-start">▶ Запустить эфир</button>
+                        </div>
+                    </li>
+                </ol>
+            </div>
+
             <div class="card stack-unit">
                 <h2>🔊 Выход аудио</h2>
                 <details class="help-block">
@@ -233,14 +268,7 @@
                                 <button type="button" id="btn-stream-connect" class="btn btn-start">▶ Подключить</button>
                                 <audio id="player" controls></audio>
                             </div>
-                            <div class="stream-link-panel">
-                                <div class="stream-link-title">🔗 Публичная ссылка на поток</div>
-                                <div class="hint" style="margin-bottom:8px;">
-                                    Откройте в браузере, VLC или мобильном плеере — эфир будет слышен без входа в панель.
-                                </div>
-                                <div id="stream-url-list" class="stream-url-list">
-                                    <div class="stream-url-empty">Загрузка...</div>
-                                </div>
+                            
                             </div>
                             <div class="form-row">
                                 <label>Устройство вывода

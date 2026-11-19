@@ -12,7 +12,8 @@ import time
 
 class SipClient:
     def __init__(self, engine, domain, username, password,
-                 port=5060, transport="udp", playback_device=None):
+                 port=5060, transport="udp", playback_device=None,
+                 playback_device_name=None):
         self.engine = engine
         self.domain = domain
         self.username = username
@@ -20,6 +21,7 @@ class SipClient:
         self.port = int(port)
         self.transport = transport or "udp"
         self.playback_device = playback_device
+        self.playback_device_name = playback_device_name
 
         self._proc = None
         self._stdout_thread = None
@@ -102,6 +104,7 @@ class SipClient:
             "port": self.port,
             "transport": self.transport,
             "playback_device": self.playback_device,
+            "playback_device_name": self.playback_device_name,
         })
 
         # register
@@ -117,6 +120,18 @@ class SipClient:
 
         print(f"[SIP] Клиент запущен ({self.username}@{self.domain}). Ожидание звонков...")
         return True
+
+    def set_playback_device(self, name=None, dev_id=None):
+        """Переключить устройство вывода SIP (то же, что у серверного эфира)."""
+        self.playback_device_name = name
+        self.playback_device = dev_id
+        if not self.is_running():
+            return False
+        return self._send({
+            "cmd": "set_playback",
+            "playback_device_name": name,
+            "playback_device": dev_id,
+        })
 
     def stop(self):
         with self._lock:
@@ -316,6 +331,18 @@ class SipClient:
                 if remain < 0.15:
                     break
                 time.sleep(0.02)
+
+        else:
+            # Аппаратный выход не запущен (например, устройство не выбрано).
+            # Chime фактически не звучит в эфире, но паузу перед ответом
+            # выдерживаем, чтобы не было наложения сигнала и голоса.
+            try:
+                secs = float(self.engine.get_chime_seconds() or 0.0)
+            except Exception:
+                secs = 0.0
+            remain = secs - (time.time() - t0)
+            if remain > 0:
+                time.sleep(min(remain, 10.0))
 
         dt = time.time() - t0
         print(f"[SIP] [{time.time():.3f}] chime done IN AIR (elapsed={dt:.2f}s) -> send answer 200")

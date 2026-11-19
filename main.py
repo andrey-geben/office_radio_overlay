@@ -117,6 +117,23 @@ def _ensure_chime():
         print(f"[boot] Не удалось сгенерировать chime: {e}")
 
 
+def _hw_output_device_name():
+    """Имя выбранного серверного устройства вывода (для PJSIP по имени)."""
+    try:
+        dev = engine.get_settings().get("hw_output_device")
+    except Exception:
+        dev = None
+    if dev is None:
+        return None
+    try:
+        for it in HardwareOutput.list_output_devices():
+            if int(it["index"]) == int(dev):
+                return it["name"]
+    except Exception:
+        pass
+    return None
+
+
 def _boot_autostart():
     global sip_client
     saved = settings_store.load()
@@ -139,8 +156,9 @@ def _boot_autostart():
             except Exception:
                 pass
 
-            # None -> sip_worker сам найдёт CABLE In / VoiceMeeter по имени
-            playback_device = saved.get("sip_playback_device")
+            # SIP всегда звучит на том же устройстве, что и серверный эфир
+            playback_device = saved.get("hw_output_device")
+            playback_name = _hw_output_device_name()
 
             sip_client = SipClient(
                 engine,
@@ -150,6 +168,7 @@ def _boot_autostart():
                 port=saved.get("sip_port", 5060),
                 transport=saved.get("sip_transport", "udp"),
                 playback_device=playback_device,
+                playback_device_name=playback_name,
             )
             ok = sip_client.start()
             print(f"[boot] SIP-клиент создан: start()={ok}")
@@ -249,6 +268,7 @@ def _wav_header(sample_rate, channels, bits):
 
 
 @app.route("/stream")
+@login_required
 def audio_stream():
     """Публичный поток — без @login_required, чтобы сотрудники могли слушать без пароля."""
     def generate():
@@ -270,10 +290,43 @@ def audio_stream():
 
 
 # ==================== Статус ====================
+# ------------ подсказка -----------------
+# list_output_devices() каждый раз инициализирует PortAudio — на опросе
+# раз в секунду это лишняя нагрузка. Кэшируем на 10 секунд.
+_outputs_cache = {"ts": 0.0, "items": []}
+
+
+def _outputs_cached(ttl: float = 10.0):
+    import time as _time
+    now = _time.time()
+    if now - _outputs_cache["ts"] > ttl:
+        try:
+            _outputs_cache["items"] = HardwareOutput.list_output_devices()
+        except Exception:
+            _outputs_cache["items"] = []
+        _outputs_cache["ts"] = now
+    return _outputs_cache["items"]
+
+
 @app.route("/api/status")
 @login_required
 def api_status():
-    return jsonify({"state": engine.get_state(), "settings": engine.get_settings()})
+    """
+    Состояние + флаг, можно ли показывать веб-плеер.
+
+    Веб-плеер играет в браузере оператора. Если на сервере всего одно
+    устройство вывода, легко случайно получить двойной звук — в этом
+    случае плеер в панели скрываем.
+    """
+    outputs = _outputs_cached()
+    settings = engine.get_settings()
+    hw_dev = settings.get("hw_output_device")
+    return jsonify({
+        "state": engine.get_state(),
+        "settings": settings,
+        "outputs_count": len(outputs),
+        "web_player_allowed": bool(len(outputs) > 1 or hw_dev is None),
+    })
 
 
 @app.route("/api/about")
@@ -290,7 +343,7 @@ def api_about():
         except Exception:
             pass
     return jsonify({
-        "version": "1.1.0",
+        "version": "1.1.1",
         "author": "Andrey Geben",
         "github": "https://github.com/andrey-geben/office_radio_overlay",
         "license": "MIT",
@@ -379,6 +432,12 @@ def api_set_output():
     if "hw_output_device" not in data:
         return jsonify({"ok": False, "error": "hw_output_device не передан"}), 400
     ok = engine.set_hw_output(data.get("hw_output_device"))
+    if ok and sip_client is not None:
+        # SIP обязан звучать на том же устройстве, что и серверный эфир
+        try:
+            sip_client.set_playback_device(_hw_output_device_name())
+        except Exception as e:
+            print(f"[output] не удалось переключить SIP: {e}")
     return jsonify({"ok": ok, "hw_output": engine.get_state().get("hw_output")})
 
 
@@ -657,7 +716,8 @@ def api_sip_start():
     except Exception:
         pass
 
-    playback_device = saved.get("sip_playback_device")
+    playback_device = saved.get("hw_output_device")
+    playback_name = _hw_output_device_name()
 
     if sip_client is not None:
         sip_client.domain = domain
@@ -666,6 +726,7 @@ def api_sip_start():
         sip_client.port = port
         sip_client.transport = transport
         sip_client.playback_device = playback_device
+        sip_client.playback_device_name = playback_name
         ok = sip_client.start()
         return jsonify({"ok": ok, "reused": True})
 
@@ -678,6 +739,7 @@ def api_sip_start():
         engine, domain=domain, username=username,
         password=password, port=port, transport=transport,
         playback_device=playback_device,
+        playback_device_name=playback_name,
     )
     ok = sip_client.start()
     return jsonify({"ok": ok, "settings": engine.get_settings()})

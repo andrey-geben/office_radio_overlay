@@ -973,10 +973,13 @@ async function refreshAll() {
         if (sr.status === 403) { _refreshFailCount = 0; return; }
         if (!sr.ok || !ar.ok) throw new Error('HTTP ' + sr.status);
 
-        const { state, settings } = await sr.json();
+        const statusData = await sr.json();
+        const { state, settings } = statusData;
         const { items } = await ar.json();
 
         renderStatus(state, settings);
+        applyWebPlayerPermission(statusData);
+        applySetupWizard(statusData);
 
         if (!formInitialized) {
             fillForm(settings);
@@ -1584,7 +1587,6 @@ if ($('upload-form')) {
 })();
 
 loadSinkDevices();
-loadStreamUrls();
 if (IS_ADMIN) {
     loadInputDevices();
     loadHwOutputs();
@@ -1595,6 +1597,124 @@ if (IS_ADMIN) {
 }
 loadAbout();
 // ==================== Публичная ссылка на поток ====================
+
+// ==================== Мастер первого запуска ====================
+async function wizLoadOutputs() {
+    const sel = $("wiz-output");
+    if (!sel) return;
+    try {
+        const r = await fetch("/api/outputs");
+        if (!r.ok) return;
+        const data = await r.json();
+        const items = data.items || [];
+        sel.innerHTML = "";
+        if (!items.length) {
+            sel.innerHTML = "<option value=''>Устройства не найдены</option>";
+            return;
+        }
+        const opt0 = document.createElement("option");
+        opt0.value = "";
+        opt0.textContent = "— выберите устройство —";
+        sel.appendChild(opt0);
+        for (const it of items) {
+            const o = document.createElement("option");
+            o.value = String(it.index);
+            o.textContent = `${it.name}${it.is_default ? " (по умолчанию)" : ""}`;
+            sel.appendChild(o);
+        }
+    } catch (e) {
+        console.error("wizLoadOutputs", e);
+    }
+}
+
+function applySetupWizard(statusData) {
+    const box = $("setup-wizard");
+    if (!box || !IS_ADMIN) return;
+    const settings = (statusData && statusData.settings) || {};
+    const need = (settings.hw_output_device === null || settings.hw_output_device === undefined);
+    box.style.display = need ? "" : "none";
+    if (need) wizLoadOutputs();
+}
+
+function bindSetupWizard() {
+    if (!$("wiz-apply")) return;
+    $("wiz-refresh").onclick = () => wizLoadOutputs();
+
+    $("wiz-apply").onclick = async () => {
+        const sel = $("wiz-output");
+        const note = $("wiz-apply-note");
+        const val = sel ? sel.value : "";
+        if (!val) {
+            if (note) note.textContent = "Выберите устройство из списка.";
+            return;
+        }
+        try {
+            const r = await fetch("/api/settings/output", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ hw_output_device: Number(val) }),
+            });
+            const data = await r.json();
+            if (note) {
+                note.textContent = data.ok
+                    ? "Устройство применено. Теперь проверьте сигнал (шаг 2)."
+                    : "Не удалось применить устройство.";
+            }
+        } catch (e) {
+            if (note) note.textContent = "Ошибка: " + e.message;
+        }
+    };
+
+    $("wiz-test").onclick = async () => {
+        try {
+            const r = await fetch("/api/sip/test-chime", { method: "POST" });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || data.ok === false) {
+                showToast("Не удалось проиграть сигнал", true);
+            }
+        } catch (e) {
+            showToast("Ошибка: " + e.message, true);
+        }
+    };
+
+    $("wiz-start").onclick = async () => {
+        try {
+            const r = await fetch("/api/start", { method: "POST" });
+            const data = await r.json();
+            showToast(data.ok ? "Эфир запущен" : "Не удалось запустить", !data.ok);
+        } catch (e) {
+            showToast("Ошибка: " + e.message, true);
+        }
+    };
+}
+
+function applyWebPlayerPermission(statusData) {
+    // На сервере одно устройство вывода и оно выбрано -> веб-плеер
+    // в панели не нужен: он может дать второй звук на той же карте.
+    const allowed = !(statusData && statusData.web_player_allowed === false);
+    ["player", "btn-stream-connect", "sink-select", "btn-refresh-sinks"].forEach((id) => {
+        const el = $(id);
+        if (el) el.style.display = allowed ? "" : "none";
+    });
+
+    let note = $("web-player-note");
+    if (!allowed) {
+        if (!note) {
+            note = document.createElement("div");
+            note.id = "web-player-note";
+            note.className = "hint";
+            note.style.margin = "8px 0";
+            note.textContent = "Веб-плеер отключён: на сервере одно устройство вывода, "
+                + "эфир звучит только в нём. Подключите отдельную карту для мониторинга.";
+            const btn = $("btn-stream-connect");
+            if (btn && btn.parentNode) btn.parentNode.insertBefore(note, btn);
+        }
+        note.style.display = "";
+    } else if (note) {
+        note.style.display = "none";
+    }
+}
+
 async function loadStreamUrls() {
     const box = $('stream-url-list');
     if (!box) return;
@@ -1692,3 +1812,5 @@ refreshAll();
         run();
     }
 })();
+
+bindSetupWizard();

@@ -228,6 +228,17 @@ class RadioOverlayEngine:
         with self._lock:
             return self._chime_active
 
+    def get_chime_seconds(self):
+        """Длительность сигнала внимания в секундах (0 — если нет)."""
+        with self._lock:
+            data = self._chime_data
+        if data is None:
+            return 0.0
+        try:
+            return len(data) / float(config.SAMPLE_RATE)
+        except Exception:
+            return 0.0
+
     def enter_sip_mode(self, sip_call=None):
         with self._lock:
             self._sip_active = True

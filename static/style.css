@@ -4415,3 +4415,22 @@ input[type="file"]::file-selector-button {
 input[type="file"]::file-selector-button:hover {
     background: var(--btn-face-hover);
 }
+
+
+/* ---------- Мастер первого запуска ---------- */
+.wizard-steps {
+    margin: 0;
+    padding-left: 20px;
+    display: grid;
+    gap: 14px;
+}
+.wizard-steps li { padding-left: 4px; }
+.wizard-title {
+    font-weight: 600;
+    margin-bottom: 6px;
+    letter-spacing: .2px;
+}
+#setup-wizard {
+    border: 1px solid var(--btn-border, #6b5a3a);
+    box-shadow: 0 0 0 1px rgba(255, 210, 130, 0.15) inset;
+}

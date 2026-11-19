@@ -52,3 +52,9 @@ assets/users.json
 # --- Audio files (chime) ---
 /chime.wav
 *.wav
+
+# --- Сборки и локальные бэкапы ---
+dist_new/
+dist/
+build/
+*.bak-*
