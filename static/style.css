@@ -2324,7 +2324,6 @@ input[type="time"], input[type="number"] {
     .output-panel .form-row { grid-template-columns: 1fr; }
     .output-panel .form-row .btn-refresh { margin-top: 4px; }
     .output-flow-grid { grid-template-columns: auto 1fr; gap: 6px; }
-    .of-meter, .output-flow-level { display: none; }
 }
 
 /* ============ СВЕТЛАЯ ТЕМА: доработки под «серебряный» Technics ============ */
@@ -4904,3 +4903,15 @@ input[type="file"]::file-selector-button:hover {
     opacity: .9;
 }
 .lamps-column .of-meter { margin-top: 2px; }
+
+/* Исходящий поток в правой колонке: тип и уровень в строке, полоса снизу */
+.lamps-column .output-flow-grid {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px 6px;
+    align-items: center;
+}
+.lamps-column .output-flow-type { grid-column: 1; }
+.lamps-column .output-flow-level { grid-column: 2; justify-self: end; }
+.lamps-column .output-flow-info { grid-column: 1 / -1; }
+.lamps-column .of-meter { grid-column: 1 / -1; display: block; }
