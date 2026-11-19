@@ -5405,3 +5405,84 @@ input[type="file"]::file-selector-button:hover {
 [data-theme="ivory"] .meter-label,
 [data-theme="ivory"] .meter-value small { color: #5a2417; }
 [data-theme="ivory"] .output-flow-info { color: #6a5237; }
+
+/* =====================================================================
+   IVORY: приборы в стиле McIntosh — чёрный корпус, синяя подсветка,
+   латунная окантовка, светлые риски шкалы.
+   ===================================================================== */
+.meter-housing { display: block; }
+.meter-ticks { display: none; }
+
+[data-theme="ivory"] .meter-housing {
+    background: linear-gradient(180deg, #101720 0%, #05080c 100%);
+    border: 2px solid #b08d57;
+    border-radius: 4px;
+    padding: 7px 9px 5px;
+    box-shadow:
+        inset 0 1px 0 #f4e6c8,
+        inset 0 -1px 0 #6d5230,
+        inset 0 10px 22px rgba(0, 0, 0, 0.85),
+        0 2px 5px rgba(60, 40, 20, 0.35);
+    position: relative;
+}
+[data-theme="ivory"] .meter-housing::after {
+    content: "";
+    position: absolute;
+    inset: 3px 4px auto 4px;
+    height: 38%;
+    border-radius: 3px 3px 40% 40%;
+    background: linear-gradient(180deg, rgba(255,255,255,0.20), rgba(255,255,255,0));
+    pointer-events: none;
+}
+[data-theme="ivory"] .meter-housing .meter {
+    background: radial-gradient(ellipse at 50% 118%, #3f8fd8 0%, #17456f 48%, #06192b 100%);
+    border-radius: 2px;
+    box-shadow: inset 0 0 16px rgba(140, 210, 255, 0.40);
+    padding: 3px 4px 1px;
+}
+[data-theme="ivory"] .meter path {
+    stroke: #d6ecff;
+    stroke-width: 1.2;
+}
+[data-theme="ivory"] .meter-ticks { display: block; }
+[data-theme="ivory"] .meter-ticks line {
+    stroke: #bfe0ff;
+    opacity: 0.9;
+}
+[data-theme="ivory"] .meter line {
+    stroke: #ff4a3a;
+    stroke-width: 1.7;
+    filter: drop-shadow(0 0 2px rgba(255, 74, 58, 0.7));
+}
+[data-theme="ivory"] .meter circle {
+    fill: #d9b25f;
+    stroke: #3a2a1c;
+    stroke-width: 0.6;
+}
+[data-theme="ivory"] .meter-label {
+    color: #7c2716;
+    letter-spacing: 0.22em;
+}
+[data-theme="ivory"] .meter-value { color: #3a2a1c; }
+
+/* McIntosh: риски шкалы голубые, стрелка красная (уточняем каскад) */
+[data-theme="ivory"] .meter .meter-ticks line {
+    stroke: #bfe0ff;
+    opacity: 0.95;
+}
+[data-theme="ivory"] .meter > line {
+    stroke: #ff4a3a;
+    stroke-width: 1.7;
+    filter: drop-shadow(0 0 2px rgba(255, 74, 58, 0.75));
+}
+[data-theme="ivory"] .meter > path {
+    stroke: #d6ecff;
+    stroke-width: 1.2;
+}
+[data-theme="ivory"] .meter-housing .meter {
+    background:
+        radial-gradient(ellipse at 50% 115%, #4b9fe0 0%, #1b5a8f 45%, #071c30 100%);
+    box-shadow:
+        inset 0 0 18px rgba(150, 215, 255, 0.45),
+        inset 0 -8px 18px rgba(0, 0, 0, 0.55);
+}
