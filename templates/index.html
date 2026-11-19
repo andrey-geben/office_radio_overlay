@@ -658,6 +658,9 @@
             </label>
         </div>
         <div class="form-row">
+            <label>Пауза после сигнала перед ответом, мс
+                <input type="number" id="sip_answer_delay" min="0" max="3000" step="50" value="400">
+            </label>
             <label class="checkbox-row" style="align-self:end; margin-bottom:8px;">
                 <input type="checkbox" id="sip_chime_enabled" checked>
                 🔔 Сигнал внимания перед соединением (плим-блим)
@@ -669,7 +672,7 @@
             </label>
         </div>
         <div class="hint" style="margin-bottom:12px;">
-            При входящем звонке радио плавно затухает, играет «плим-блим», затем SIP-звонок соединяется.
+            При входящем звонке радио плавно затухает, играет «плим-блим», затем выдерживается пауза (чтобы хвост сигнала не наложился на голос), и только после этого SIP-звонок соединяется.
             Тест играет сигнал прямо сейчас — убедитесь, что радио/объявление приостановится.
         </div>
         <div class="buttons">

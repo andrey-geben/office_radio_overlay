@@ -8,6 +8,7 @@ import json
 import subprocess
 import threading
 import time
+import config
 
 
 class SipClient:
@@ -322,13 +323,15 @@ class SipClient:
             print(f"[SIP] get_hw_output: {e}")
 
         if hw is not None and hw.is_running():
-            deadline2 = time.time() + 5.0
+            deadline2 = time.time() + 6.0
             while time.time() < deadline2:
                 try:
                     remain = hw.pending_duration()
                 except Exception:
                     remain = 0.0
-                if remain < 0.15:
+                # 0.03 c: ждём практически полной тишины в буфере,
+                # иначе хвост chime наезжает на голос.
+                if remain < 0.03:
                     break
                 time.sleep(0.02)
 
@@ -344,6 +347,19 @@ class SipClient:
             if remain > 0:
                 time.sleep(min(remain, 10.0))
 
+        # 3) Небольшая пауза после сигнала: хвост затухания не должен
+        #    накладываться на первые слова вызывающего.
+        try:
+            _settings = self.engine.get_settings() or {}
+            gap_ms = int(_settings.get("sip_answer_delay_ms",
+                                       getattr(config, "SIP_ANSWER_DELAY_MS", 400)))
+        except Exception:
+            gap_ms = 400
+        gap_ms = max(0, min(3000, gap_ms))
+        if gap_ms:
+            time.sleep(gap_ms / 1000.0)
+
         dt = time.time() - t0
-        print(f"[SIP] [{time.time():.3f}] chime done IN AIR (elapsed={dt:.2f}s) -> send answer 200")
+        print(f"[SIP] [{time.time():.3f}] chime done IN AIR (elapsed={dt:.2f}s, "
+              f"gap={gap_ms}ms) -> send answer 200")
         self._send({"cmd": "answer", "status": 200})

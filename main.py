@@ -704,6 +704,11 @@ def api_sip_save():
     if transport not in ("udp", "tcp"):
         transport = "udp"
     chime_enabled = bool(data.get("sip_chime_enabled", True))
+    try:
+        answer_delay_ms = int(data.get("sip_answer_delay_ms", 400))
+    except (TypeError, ValueError):
+        answer_delay_ms = 400
+    answer_delay_ms = max(0, min(3000, answer_delay_ms))
 
     ok, err = _validate_sip_domain(domain)
     if not ok:
@@ -717,8 +722,10 @@ def api_sip_save():
         sip_domain=domain, sip_username=username, sip_password=password,
         sip_port=port, sip_transport=transport,
         sip_chime_enabled=chime_enabled,
+        sip_answer_delay_ms=answer_delay_ms,
     )
-    engine.update_settings(sip_chime_enabled=chime_enabled)
+    engine.update_settings(sip_chime_enabled=chime_enabled,
+                           sip_answer_delay_ms=answer_delay_ms)
     return jsonify({"ok": True})
 
 
@@ -824,6 +831,7 @@ def api_sip_status():
         "auto_start_sip": saved.get("auto_start_sip", False),
         "auto_start_engine": saved.get("auto_start_engine", False),
         "sip_chime_enabled": saved.get("sip_chime_enabled", True),
+        "sip_answer_delay_ms": saved.get("sip_answer_delay_ms", 400),
     })
 
 

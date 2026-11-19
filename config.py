@@ -79,4 +79,7 @@ BROWSER_URL = None
 # --- SIP: сигнал внимания перед соединением ---
 SIP_CHIME_FILE = "assets/chime.wav"
 SIP_CHIME_ENABLED_DEFAULT = True
+# Пауза после окончания сигнала, прежде чем ответить на звонок.
+# Нужна, чтобы хвост chime не накладывался на голос вызывающего.
+SIP_ANSWER_DELAY_MS = 400
 SIP_CHIME_FADE_OUT_MS = 300     # затухание радио перед chime

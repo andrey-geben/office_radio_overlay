@@ -923,6 +923,7 @@ async function refreshSipStatus() {
             $('sip_transport').value = data.sip_transport || 'udp';
             $('auto_start_sip').checked = !!data.auto_start_sip;
             if ($('sip_chime_enabled')) $('sip_chime_enabled').checked = data.sip_chime_enabled !== false;
+            if ($('sip_answer_delay')) $('sip_answer_delay').value = data.sip_answer_delay_ms ?? 400;
             if ($('auto_start_engine')) $('auto_start_engine').checked = !!data.auto_start_engine;
             $('sip_password').placeholder = data.sip_password_set
                 ? '•••••••• (сохранён)' : 'Введите пароль';
@@ -939,6 +940,7 @@ function _sipPayload() {
         sip_port: parseInt($('sip_port').value) || 5060,
         sip_transport: $('sip_transport').value,
         sip_chime_enabled: $('sip_chime_enabled') ? $('sip_chime_enabled').checked : true,
+        sip_answer_delay_ms: parseInt(($('sip_answer_delay') || {}).value, 10) || 0,
     };
 }
 

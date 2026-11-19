@@ -217,6 +217,8 @@ class RadioOverlayEngine:
             "fallback_sources": saved.get("fallback_sources", []),
             "dtmf_labels": saved.get("dtmf_labels", config.DTMF_DEFAULT_LABELS),
             "sip_chime_enabled": saved.get("sip_chime_enabled", config.SIP_CHIME_ENABLED_DEFAULT),
+            "sip_answer_delay_ms": saved.get(
+                "sip_answer_delay_ms", getattr(config, "SIP_ANSWER_DELAY_MS", 400)),
         }
 
     # ==================== SIP ====================
