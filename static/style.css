@@ -4915,3 +4915,362 @@ input[type="file"]::file-selector-button:hover {
 .lamps-column .output-flow-level { grid-column: 2; justify-self: end; }
 .lamps-column .output-flow-info { grid-column: 1 / -1; }
 .lamps-column .of-meter { grid-column: 1 / -1; display: block; }
+
+/* =====================================================================
+   ТЕМА: ВОЕННЫЙ / ПОЛЕВОЙ ПРИЁМНИК
+   ===================================================================== */
+[data-theme="military"] {
+    --bg-body: #24261d;
+    --chassis: #1e2017;
+    --chassis-edge: #5a5f47;
+    --module-a: #3b3f2e;
+    --module-b: #30342a;
+    --module-border: #121409;
+    --module-hi: #5a5f47;
+    --panel: #1a1c14;
+    --panel-hi: #262a1c;
+    --text: #d6d4bd;
+    --text-dim: #a5a389;
+    --text-mute: #77755f;
+    --text-strong: #ffb347;
+    --accent: #ffb347;
+    --accent-2: #c98a2e;
+    --accent-glow: rgba(255, 179, 71, 0.35);
+    --display-bg: #0b0d07;
+    --display-fg: #ffb347;
+    --display-glow: 0 0 6px rgba(255, 179, 71, 0.5);
+    --led-green: #b7ff6a;
+    --led-red: #ff5a3a;
+    --led-amber: #ffb347;
+    --btn-face: linear-gradient(180deg, #4c5139 0%, #34382a 100%);
+    --btn-face-hover: linear-gradient(180deg, #5b6146 0%, #3f4433 100%);
+    --btn-border: #0e1008;
+    --btn-shadow: inset 1px 1px 0 rgba(255,255,220,.25), inset -1px -1px 0 rgba(0,0,0,.5);
+    --chrome: #b8b49a;
+    --chrome-hi: #ded9bf;
+    --divider: #15170e;
+    --input-bg: #0b0d07;
+    --input-fg: #ffcf7a;
+    --input-border: #4a5038;
+}
+
+[data-theme="military"] body {
+    font-family: "Consolas", "Courier New", monospace;
+    background: #24261d;
+}
+[data-theme="military"] header.topbar {
+    background: linear-gradient(180deg, #4a4f3a 0%, #33372a 100%) !important;
+    border-bottom: 2px solid #121409;
+    border-radius: 0;
+}
+[data-theme="military"] header.topbar h1 {
+    background: transparent !important; border: 0 !important; box-shadow: none !important;
+    color: #ffb347; letter-spacing: 2px; text-transform: uppercase;
+}
+[data-theme="military"] .stack-unit,
+[data-theme="military"] .output-panel,
+[data-theme="military"] .modal-content,
+[data-theme="military"] .card {
+    background: linear-gradient(180deg, #3d4130 0%, #30342a 100%);
+    border: 1px solid #121409;
+    border-radius: 0;
+    box-shadow: inset 1px 1px 0 #5f6549, inset -1px -1px 0 #1a1c14;
+}
+[data-theme="military"] .btn,
+[data-theme="military"] .transport-btn,
+[data-theme="military"] .btn-sm {
+    border-radius: 0; text-transform: uppercase; letter-spacing: 1px; font-size: 11px;
+}
+[data-theme="military"] .label,
+[data-theme="military"] .hint,
+[data-theme="military"] .eq-label,
+[data-theme="military"] .lamp-label,
+[data-theme="military"] .output-panel-title,
+[data-theme="military"] .queue-label,
+[data-theme="military"] .output-flow-title,
+[data-theme="military"] .stack-unit h2 {
+    color: #ffb347 !important; text-transform: uppercase; letter-spacing: 1.4px;
+}
+[data-theme="military"] .value,
+[data-theme="military"] .meter-value {
+    color: #ffb347; text-shadow: 0 0 6px rgba(255,179,71,.5);
+}
+[data-theme="military"] .meter path { stroke: #6d6a4a; }
+[data-theme="military"] .footer { color: #8a886d; border-top-color: #14160e; }
+
+/* =====================================================================
+   ТЕМА: СТУДИЙНЫЙ ПУЛЬТ (BROADCAST CONSOLE)
+   ===================================================================== */
+[data-theme="studio"] {
+    --bg-body: #14171b;
+    --chassis: #101318;
+    --chassis-edge: #39434f;
+    --module-a: #242a32;
+    --module-b: #1b2027;
+    --module-border: #0a0d11;
+    --module-hi: #3d4855;
+    --panel: #0d1014;
+    --panel-hi: #181d23;
+    --text: #dde5ee;
+    --text-dim: #97a5b6;
+    --text-mute: #66727f;
+    --text-strong: #6fd0ff;
+    --accent: #4aa8ff;
+    --accent-2: #2f7fd0;
+    --accent-glow: rgba(74, 168, 255, 0.40);
+    --display-bg: #06080b;
+    --display-fg: #6fd0ff;
+    --display-glow: 0 0 6px rgba(111, 208, 255, 0.5);
+    --led-green: #36e07a;
+    --led-red: #ff5b5b;
+    --led-amber: #ffc65c;
+    --btn-face: linear-gradient(180deg, #313a45 0%, #1e242b 100%);
+    --btn-face-hover: linear-gradient(180deg, #3d4854 0%, #262d35 100%);
+    --btn-border: #0a0d11;
+    --btn-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -2px 0 rgba(0,0,0,.5);
+    --chrome: #aab6c4;
+    --chrome-hi: #e2ebf5;
+    --divider: #0b0e12;
+    --input-bg: #06080b;
+    --input-fg: #9ad9ff;
+    --input-border: #333d49;
+}
+
+[data-theme="studio"] body { font-family: "Segoe UI", Roboto, sans-serif; }
+[data-theme="studio"] header.topbar {
+    background: linear-gradient(180deg, #1d242c 0%, #131920 100%) !important;
+    border-bottom: 2px solid #c9a14a;
+    border-radius: 0;
+}
+[data-theme="studio"] header.topbar h1 {
+    background: transparent !important; border: 0 !important; box-shadow: none !important;
+    color: #eaf2fb; letter-spacing: 1.6px;
+}
+[data-theme="studio"] .stack-unit,
+[data-theme="studio"] .output-panel,
+[data-theme="studio"] .modal-content,
+[data-theme="studio"] .card {
+    background: linear-gradient(180deg, #242a32 0%, #1a2027 100%);
+    border: 1px solid #0a0d11;
+    border-radius: 2px;
+    box-shadow: inset 0 1px 0 #3d4855, 0 2px 0 #0a0d11;
+}
+[data-theme="studio"] .btn,
+[data-theme="studio"] .transport-btn {
+    border-radius: 2px; text-transform: uppercase; letter-spacing: 0.8px; font-size: 11px;
+}
+[data-theme="studio"] .label,
+[data-theme="studio"] .hint,
+[data-theme="studio"] .output-panel-title,
+[data-theme="studio"] .eq-label,
+[data-theme="studio"] .queue-label,
+[data-theme="studio"] .output-flow-title,
+[data-theme="studio"] .stack-unit h2 {
+    color: #6fd0ff !important; text-transform: uppercase; letter-spacing: 1.2px;
+}
+[data-theme="studio"] .meter path { stroke: #33414f; }
+[data-theme="studio"] .lamp-item { background: linear-gradient(180deg,#2a323b,#1d232a); border-color:#0a0d11; }
+
+/* =====================================================================
+   ТЕМА: HI-FI 70-Х (MARANTZ / PIONEER)
+   ===================================================================== */
+[data-theme="hifi"] {
+    --bg-body: #2a1c11;
+    --chassis: #1d130b;
+    --chassis-edge: #6b4a2e;
+    --module-a: #3d2b1b;
+    --module-b: #2c1f13;
+    --module-border: #140d07;
+    --module-hi: #7a5433;
+    --panel: #17100a;
+    --panel-hi: #241a11;
+    --text: #f2e8d5;
+    --text-dim: #cbb996;
+    --text-mute: #8f7a5c;
+    --text-strong: #ffc36b;
+    --accent: #ffb64d;
+    --accent-2: #d08b2c;
+    --accent-glow: rgba(255, 182, 77, 0.40);
+    --display-bg: #0a0704;
+    --display-fg: #ffcf7a;
+    --display-glow: 0 0 7px rgba(255, 207, 122, 0.55);
+    --led-green: #9fdf7a;
+    --led-red: #ff6a4a;
+    --led-amber: #ffc36b;
+    --btn-face: linear-gradient(180deg, #ded5c4 0%, #b6ab97 100%);
+    --btn-face-hover: linear-gradient(180deg, #ece3d2 0%, #c4b9a5 100%);
+    --btn-border: #6d6252;
+    --btn-shadow: inset 0 1px 0 #fff8ea, 0 2px 0 #4a4033, 0 3px 4px rgba(0,0,0,.45);
+    --chrome: #e6dccb;
+    --chrome-hi: #fff8ec;
+    --divider: #160f09;
+    --input-bg: #120c07;
+    --input-fg: #ffd89a;
+    --input-border: #6b563c;
+}
+
+[data-theme="hifi"] body {
+    background: radial-gradient(ellipse at top, #3a2616 0%, #180f08 70%);
+}
+[data-theme="hifi"] header.topbar {
+    background: linear-gradient(180deg, #d9cfbe 0%, #b9ad98 55%, #8f846f 100%) !important;
+    border-bottom: 2px solid #4a3b28;
+    border-radius: 2px;
+}
+[data-theme="hifi"] header.topbar h1,
+[data-theme="hifi"] header.topbar .user-name,
+[data-theme="hifi"] header.topbar .role-badge {
+    color: #2a2117 !important; text-shadow: 0 1px 0 rgba(255,255,255,.5) !important;
+    font-family: Georgia, "Times New Roman", serif; font-style: italic; letter-spacing: 1px;
+}
+[data-theme="hifi"] .stack-unit,
+[data-theme="hifi"] .output-panel,
+[data-theme="hifi"] .modal-content,
+[data-theme="hifi"] .card {
+    background: linear-gradient(180deg, #3f2d1c 0%, #2d2014 100%);
+    border: 1px solid #140d07;
+    border-radius: 3px;
+    box-shadow: inset 1px 1px 0 #7a5433, inset -1px -1px 0 #1a1209;
+}
+[data-theme="hifi"] .btn,
+[data-theme="hifi"] .transport-btn {
+    color: #2b2118 !important;
+    text-shadow: 0 1px 0 rgba(255,255,255,.55) !important;
+    border-radius: 3px;
+    font-family: Georgia, serif;
+    letter-spacing: .5px;
+}
+[data-theme="hifi"] .label,
+[data-theme="hifi"] .hint,
+[data-theme="hifi"] .output-panel-title,
+[data-theme="hifi"] .eq-label,
+[data-theme="hifi"] .queue-label,
+[data-theme="hifi"] .output-flow-title,
+[data-theme="hifi"] .stack-unit h2 {
+    color: #ffc36b !important;
+    font-family: Georgia, "Times New Roman", serif;
+    letter-spacing: .8px;
+}
+[data-theme="hifi"] .meter path { stroke: #8a6a45; }
+[data-theme="hifi"] .meter-value { font-family: Georgia, serif; }
+
+/* =====================================================================
+   ТЕМА: ТЕРМИНАЛ (CRT GREEN)
+   ===================================================================== */
+[data-theme="terminal"] {
+    --bg-body: #010301;
+    --chassis: #000000;
+    --chassis-edge: #0f4a1c;
+    --module-a: #03140b;
+    --module-b: #010a02;
+    --module-border: #0b3a14;
+    --module-hi: #1d7a33;
+    --panel: #000000;
+    --panel-hi: #03140b;
+    --text: #33ff66;
+    --text-dim: #26d24f;
+    --text-mute: #15802f;
+    --text-strong: #7dff9d;
+    --accent: #33ff66;
+    --accent-2: #1fbf46;
+    --accent-glow: rgba(51, 255, 102, 0.45);
+    --display-bg: #000000;
+    --display-fg: #33ff66;
+    --display-glow: 0 0 8px rgba(51, 255, 102, 0.65);
+    --led-green: #33ff66;
+    --led-red: #ff4040;
+    --led-amber: #ffe14d;
+    --btn-face: linear-gradient(180deg, #06200b 0%, #020c04 100%);
+    --btn-face-hover: linear-gradient(180deg, #0a2e12 0%, #03140b 100%);
+    --btn-border: #0b3a14;
+    --btn-shadow: none;
+    --chrome: #33ff66;
+    --chrome-hi: #a6ffbf;
+    --divider: #0b3a14;
+    --input-bg: #000000;
+    --input-fg: #33ff66;
+    --input-border: #1d7a33;
+}
+
+[data-theme="terminal"] body {
+    font-family: "Consolas", "Courier New", monospace;
+    background: #010301;
+}
+[data-theme="terminal"] body::after {
+    content: "";
+    position: fixed; inset: 0; pointer-events: none; z-index: 9999;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,.28) 0 1px, transparent 1px 3px);
+    opacity: .55;
+}
+[data-theme="terminal"] header.topbar {
+    background: #000 !important;
+    border-bottom: 1px solid #1d7a33;
+    border-radius: 0;
+}
+[data-theme="terminal"] header.topbar h1 {
+    background: transparent !important; border: 0 !important; box-shadow: none !important;
+    color: #33ff66; letter-spacing: 2px; text-shadow: 0 0 8px rgba(51,255,102,.6);
+}
+[data-theme="terminal"] .stack-unit,
+[data-theme="terminal"] .output-panel,
+[data-theme="terminal"] .modal-content,
+[data-theme="terminal"] .card {
+    background: #000;
+    border: 1px solid #1d7a33;
+    border-radius: 0;
+    box-shadow: none;
+}
+[data-theme="terminal"] .btn,
+[data-theme="terminal"] .transport-btn {
+    background: #020c04;
+    border: 1px solid #1d7a33;
+    border-radius: 0;
+    color: #33ff66;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+[data-theme="terminal"] .btn:hover,
+[data-theme="terminal"] .transport-btn:hover {
+    background: #0a2e12;
+    box-shadow: 0 0 8px rgba(51,255,102,.35);
+}
+[data-theme="terminal"] .label,
+[data-theme="terminal"] .value,
+[data-theme="terminal"] .hint,
+[data-theme="terminal"] .output-panel-title,
+[data-theme="terminal"] .eq-label,
+[data-theme="terminal"] .queue-label,
+[data-theme="terminal"] .output-flow-title,
+[data-theme="terminal"] .lamp-label,
+[data-theme="terminal"] .stack-unit h2 {
+    color: #33ff66 !important;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    text-shadow: 0 0 6px rgba(51,255,102,.45);
+}
+[data-theme="terminal"] .meter path { stroke: #1d7a33; }
+[data-theme="terminal"] input[type="checkbox"],
+[data-theme="terminal"] input[type="radio"] { accent-color: #33ff66; }
+
+/* Колонки-декорации под новые темы */
+[data-theme="military"] .evraz-speaker .speaker-cabinet {
+    filter: sepia(1) hue-rotate(35deg) saturate(.55) brightness(.85);
+}
+[data-theme="studio"] .evraz-speaker .speaker-cabinet {
+    filter: grayscale(1) brightness(.55);
+}
+[data-theme="terminal"] .evraz-speaker .speaker-cabinet {
+    filter: grayscale(1) brightness(.35) sepia(1) hue-rotate(70deg) saturate(2);
+}
+[data-theme="hifi"] .evraz-speaker .speaker-cabinet {
+    filter: saturate(1.15) brightness(1.05);
+}
+
+/* Терминал: курсор-подобные подписи и «скобки» у кнопок */
+[data-theme="terminal"] .btn::before { content: "["; opacity: .7; }
+[data-theme="terminal"] .btn::after  { content: "]"; opacity: .7; }
+[data-theme="terminal"] .transport-btn { box-shadow: none; }
+
+/* Студийный пульт: золотая линия и синие LED-подписи */
+[data-theme="studio"] .stack-unit h2 { border-bottom: 1px solid rgba(201,161,74,.35); padding-bottom: 4px; }
+[data-theme="studio"] .lamp-item.active { box-shadow: 0 0 8px rgba(74,168,255,.35); }

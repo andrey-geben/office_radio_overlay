@@ -157,9 +157,15 @@ function drawEqualizer(spectrum) {
     const themeName = document.documentElement.getAttribute('data-theme');
     const isLight = themeName === 'light';
     const isWinamp = themeName === 'winamp';
-    const gridColor = isWinamp
-        ? 'rgba(0, 255, 90, 0.18)'
-        : (isLight ? 'rgba(139,132,120,0.35)' : 'rgba(60,40,25,0.3)');
+    const GRID = {
+        winamp: 'rgba(0, 255, 90, 0.18)',
+        terminal: 'rgba(51, 255, 102, 0.16)',
+        military: 'rgba(255, 179, 71, 0.14)',
+        hifi: 'rgba(255, 195, 107, 0.14)',
+        studio: 'rgba(111, 208, 255, 0.15)',
+    };
+    const gridColor = GRID[themeName]
+        || (isLight ? 'rgba(139,132,120,0.35)' : 'rgba(60,40,25,0.3)');
 
     const bars = spectrum.length || 24;
     const barW = (W / bars) * 0.72;
@@ -170,11 +176,19 @@ function drawEqualizer(spectrum) {
         const x = i * (barW + gap) + gap / 2;
         const y = H - h;
         const grad = ctx.createLinearGradient(0, H, 0, 0);
-        if (isWinamp) {
-            grad.addColorStop(0, '#008a00');
-            grad.addColorStop(0.5, '#00e000');
-            grad.addColorStop(0.85, '#c8ff00');
-            grad.addColorStop(1, '#ff3b30');
+        const EQ_PALETTES = {
+            winamp:   ['#008a00', '#00e000', '#c8ff00', '#ff3b30'],
+            terminal: ['#0b6b22', '#33ff66', '#a6ffbf', '#ffffff'],
+            military: ['#5a5320', '#ffb347', '#ffd27a', '#ffe9b8'],
+            hifi:     ['#7a4a12', '#ffb64d', '#ffd98f', '#fff3d6'],
+            studio:   ['#0a4f8a', '#4aa8ff', '#8fd6ff', '#d6efff'],
+        };
+        const pal = EQ_PALETTES[themeName];
+        if (pal) {
+            grad.addColorStop(0, pal[0]);
+            grad.addColorStop(0.5, pal[1]);
+            grad.addColorStop(0.85, pal[2]);
+            grad.addColorStop(1, pal[3]);
         } else {
             grad.addColorStop(0, '#3aa83a');
             grad.addColorStop(0.5, '#d4c44a');
@@ -184,7 +198,8 @@ function drawEqualizer(spectrum) {
         ctx.fillStyle = grad;
         ctx.fillRect(x, y, barW, h);
         if (v > 0.08) {
-            ctx.fillStyle = isWinamp ? 'rgba(220,255,220,0.85)' : 'rgba(255,230,150,0.7)';
+            ctx.fillStyle = (themeName === 'terminal' || themeName === 'winamp')
+                ? 'rgba(220,255,220,0.85)' : 'rgba(255,230,150,0.7)';
             ctx.fillRect(x, y, barW, 2);
         }
     }
@@ -981,7 +996,11 @@ async function loadAbout() {
 }
 
 // ==================== Переключение темы ====================
-const THEMES = ['dark', 'light', 'winamp'];
+const THEMES = ['dark', 'light', 'winamp', 'studio', 'military', 'hifi', 'terminal'];
+const THEME_ICONS = {
+    dark: '☾', light: '☀', winamp: '🎵',
+    studio: '🎚', military: '🪖', hifi: '📻', terminal: '🖥',
+};
 
 function applyTheme(theme) {
     theme = THEMES.includes(theme) ? theme : 'dark';
@@ -989,7 +1008,7 @@ function applyTheme(theme) {
     try { localStorage.setItem('evraz_theme', theme); } catch (e) {}
 
     const btn = document.getElementById('theme-toggle');
-    if (btn) btn.textContent = theme === 'winamp' ? '🎵' : (theme === 'light' ? '☀' : '☾');
+    if (btn) btn.textContent = THEME_ICONS[theme] || '☾';
 
     const sel = document.getElementById('theme-select');
     if (sel) sel.value = theme;
