@@ -144,6 +144,8 @@ class RadioOverlayEngine:
 
         # --- Очереди ---
         self._output_queue = queue.Queue(maxsize=config.STREAM_QUEUE_SIZE)
+        # Каждый браузер-слушатель получает свою копию эфира.
+        self._subscribers = []
 
         # --- Буфер для сканера субтонов ---
         self._scan_buffer = collections.deque()
@@ -344,7 +346,10 @@ class RadioOverlayEngine:
                     pass
             return False
 
-        chime = self._load_chime() if chime_enabled else None
+        engine_running = bool(self._state.get("running"))
+        chime = self._load_chime() if (chime_enabled and engine_running) else None
+        if not engine_running:
+            logger.info("Эфир остановлен — SIP соединяем без сигнала внимания")
 
         if chime is None:
             with self._lock:
@@ -539,11 +544,43 @@ class RadioOverlayEngine:
             pass
         return cleaned
 
+    def subscribe_output(self):
+        """Отдельная очередь эфира для одного слушателя (браузера)."""
+        q = queue.Queue(maxsize=config.STREAM_QUEUE_SIZE)
+        with self._lock:
+            self._subscribers.append(q)
+        return q
+
+    def unsubscribe_output(self, q):
+        with self._lock:
+            try:
+                self._subscribers.remove(q)
+            except ValueError:
+                pass
+
     def get_output_chunk(self, timeout=1.0):
+        """Совместимость: общая очередь (не использовать для веб-плеера)."""
         try:
             return self._output_queue.get(timeout=timeout)
         except queue.Empty:
             return None
+
+    def is_alive(self):
+        t = self._thread
+        return bool(t is not None and t.is_alive())
+
+    def is_hw_output_running(self):
+        try:
+            return self._hw_output.is_running()
+        except Exception:
+            return False
+
+    def get_announcement_seconds_left(self):
+        with self._lock:
+            if not self._ann_active or not self._playing_data:
+                return 0.0
+            left = len(self._playing_data) - self._ann_pos
+            return max(0.0, left / 2.0 / config.SAMPLE_RATE)
 
     def set_hw_output(self, device_index):
         if device_index is None or device_index == "":
@@ -668,6 +705,14 @@ class RadioOverlayEngine:
             self._hw_output.clear()
         except Exception:
             pass
+        with self._lock:
+            subs = list(self._subscribers)
+        for q in subs:
+            while True:
+                try:
+                    q.get_nowait()
+                except queue.Empty:
+                    break
         if self._thread:
             self._thread.join(timeout=5)
             if self._thread.is_alive():
@@ -811,17 +856,20 @@ class RadioOverlayEngine:
     def _push_output(self, chunk, output_type="radio", extra=None):
         if chunk is None:
             return
-        try:
-            self._output_queue.put_nowait(chunk)
-        except queue.Full:
+        with self._lock:
+            subs = list(self._subscribers)
+        for q in subs:
             try:
-                self._output_queue.get_nowait()
-            except queue.Empty:
-                pass
-            try:
-                self._output_queue.put_nowait(chunk)
+                q.put_nowait(chunk)
             except queue.Full:
-                pass
+                try:
+                    q.get_nowait()
+                except queue.Empty:
+                    pass
+                try:
+                    q.put_nowait(chunk)
+                except queue.Full:
+                    pass
         if self._hw_output.is_running():
             self._hw_output.push(chunk)
 
@@ -917,6 +965,9 @@ class RadioOverlayEngine:
     def _handle_trigger(self, from_timeout=False, dtmf_label=None):
         now = time.time()
         with self._lock:
+            if self._sip_active or self._chime_active:
+                logger.info("Объявление пропущено: идёт SIP-звонок или сигнал внимания")
+                return False
             if now - self._last_play_time < config.MIN_ANNOUNCE_INTERVAL:
                 return False
 

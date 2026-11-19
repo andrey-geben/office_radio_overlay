@@ -182,6 +182,7 @@ function drawEqualizer(spectrum) {
             military: ['#5a5320', '#ffb347', '#ffd27a', '#ffe9b8'],
             hifi:     ['#7a4a12', '#ffb64d', '#ffd98f', '#fff3d6'],
             studio:   ['#0a4f8a', '#4aa8ff', '#8fd6ff', '#d6efff'],
+            ivory:    ['#7c2716', '#c98a2e', '#e0b15a', '#f3e3bd'],
         };
         const pal = EQ_PALETTES[themeName];
         if (pal) {
@@ -996,10 +997,10 @@ async function loadAbout() {
 }
 
 // ==================== Переключение темы ====================
-const THEMES = ['dark', 'light', 'winamp', 'studio', 'military', 'hifi', 'terminal'];
+const THEMES = ['dark', 'light', 'winamp', 'studio', 'military', 'hifi', 'terminal', 'ivory'];
 const THEME_ICONS = {
     dark: '☾', light: '☀', winamp: '🎵',
-    studio: '🎚', military: '🪖', hifi: '📻', terminal: '🖥',
+    studio: '🎚', military: '🪖', hifi: '📻', terminal: '🖥', ivory: '🪵',
 };
 
 function applyTheme(theme) {
@@ -1051,6 +1052,7 @@ async function refreshAll() {
 
         const statusData = await sr.json();
         if (statusData.net_speed_mbps) netSpeedMbps = Number(statusData.net_speed_mbps) || 100;
+        updateWarnBanner(statusData);
         const { state, settings } = statusData;
         const { items } = await ar.json();
 
@@ -1801,6 +1803,21 @@ function bindWebPlayerLocalToggle() {
             showToast("Ошибка: " + e.message, true);
         }
     };
+}
+
+function updateWarnBanner(statusData) {
+    const el = $("warn-banner");
+    if (!el) return;
+    const st = (statusData && statusData.state) || {};
+    let msg = "";
+    if (st.running && statusData.hw_output_active === false) {
+        msg = "⚠ Эфир запущен, но аппаратное устройство вывода не выбрано — "
+            + "в помещении звука нет. Выберите устройство в «Выход аудио».";
+    } else if (st.running && statusData.engine_alive === false) {
+        msg = "⚠ Движок числится запущенным, но поток не работает — нажмите СТОП и ПЛЕЙ.";
+    }
+    el.textContent = msg;
+    el.style.display = msg ? "" : "none";
 }
 
 function applyWebPlayerPermission(statusData) {

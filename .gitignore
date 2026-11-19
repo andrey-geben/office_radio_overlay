@@ -58,3 +58,10 @@ dist_new/
 dist/
 build/
 *.bak-*
+
+# Radio: локальные файлы
+assets/secret.key
+assets/app.lock
+logs/
+dist_new/
+*.bak-*

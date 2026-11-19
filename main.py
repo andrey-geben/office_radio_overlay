@@ -1,5 +1,6 @@
 # main.py
 import os
+import queue
 import sys
 
 # --- Инициализация логирования (до всех остальных импортов) ---
@@ -363,11 +364,18 @@ def audio_stream():
         }), 403
 
     def generate():
-        yield _wav_header(config.SAMPLE_RATE, config.CHANNELS, 16)
-        silence = bytes(config.BLOCK_SIZE * 2)
-        while True:
-            chunk = engine.get_output_chunk(timeout=0.5)
-            yield chunk if chunk is not None else silence
+        sub = engine.subscribe_output()
+        try:
+            yield _wav_header(config.SAMPLE_RATE, config.CHANNELS, 16)
+            silence = bytes(config.BLOCK_SIZE * 2)
+            while True:
+                try:
+                    chunk = sub.get(timeout=0.5)
+                except queue.Empty:
+                    chunk = None
+                yield chunk if chunk is not None else silence
+        finally:
+            engine.unsubscribe_output(sub)
 
     return Response(
         stream_with_context(generate()),
@@ -375,7 +383,6 @@ def audio_stream():
         headers={
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "X-Accel-Buffering": "no",
-            "Access-Control-Allow-Origin": "*",
         },
     )
 
@@ -412,8 +419,16 @@ def api_status():
     outputs = _outputs_cached()
     settings = engine.get_settings()
     allowed, reason = _web_player_state(settings)
+    state = engine.get_state()
+    if state.get("running") and not engine.is_alive():
+        # Поток движка умер, а флаг остался — показываем правду.
+        state["running"] = False
+        logger_ = app.logger
+        logger_.warning("Движок числился запущенным, но поток не жив — сбрасываю статус")
     return jsonify({
-        "state": engine.get_state(),
+        "state": state,
+        "engine_alive": engine.is_alive(),
+        "hw_output_active": engine.is_hw_output_running(),
         "settings": settings,
         "outputs_count": len(outputs),
         "client_is_server": _client_is_server(),
@@ -1040,7 +1055,44 @@ def _open_browser_when_ready():
         print(f"[BOOT] не удалось открыть браузер: {e}")
 
 
+_single_instance_handle = None
+
+
+def _acquire_single_instance():
+    """Не даём запустить второй exe: иначе порт занят и путаница."""
+    global _single_instance_handle
+    lock_path = os.path.join(settings_store.BASE_DIR, "assets", "app.lock")
+    try:
+        os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+        fh = open(lock_path, "a+")
+    except Exception:
+        return True
+    try:
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        try:
+            fh.close()
+        except Exception:
+            pass
+        return False
+    _single_instance_handle = fh
+    return True
+
+
 if __name__ == "__main__":
+    if not _acquire_single_instance():
+        preflight.show_messagebox(
+            "Office Radio Overlay уже запущен.\n\n"
+            "Закройте уже работающее окно (или завершите процесс "
+            "OfficeRadioOverlay.exe) и запустите снова.",
+            is_error=True,
+        )
+        sys.exit(0)
     _ensure_chime()
     results = preflight.run_checks()
     saved = settings_store.load()

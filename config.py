@@ -1,5 +1,37 @@
 # config.py
 import os
+import sys
+import secrets
+
+
+def _app_dir():
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def _load_secret_key():
+    """Ключ сессий: env -> assets/secret.key -> сгенерировать и сохранить."""
+    env = os.environ.get("SECRET_KEY")
+    if env:
+        return env
+    path = os.path.join(_app_dir(), "assets", "secret.key")
+    try:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                key = f.read().strip()
+            if len(key) >= 32:
+                return key
+    except Exception:
+        pass
+    key = secrets.token_hex(32)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(key)
+    except Exception:
+        pass
+    return key
 
 # --- Настройки аудио ---
 SAMPLE_RATE = 48000
@@ -47,7 +79,7 @@ DTMF_MIN_DIGIT_MS = 40                # минимальная длительн�
 # --- Авторизация ---
 AUTH_USERNAME = os.environ.get("AUTH_USER", "admin")
 AUTH_PASSWORD = os.environ.get("AUTH_PASS", "admin")
-SECRET_KEY = os.environ.get("SECRET_KEY", "CHANGE-ME-PLEASE-32-CHARS-MINIMUM-!!")
+SECRET_KEY = _load_secret_key()
 SESSION_LIFETIME_HOURS = 12
 
 # --- Icecast (на будущее) ---

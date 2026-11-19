@@ -5,7 +5,10 @@ import logging
 import logging.handlers
 import threading
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, "frozen", False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGS_DIR = os.path.join(BASE_DIR, "logs")
 LOG_FILE = os.path.join(LOGS_DIR, "app.log")
 
@@ -19,9 +22,11 @@ def setup_logging(level=logging.INFO):
     with _lock:
         if _initialized:
             return
-        _initialized = True
 
-    os.makedirs(LOGS_DIR, exist_ok=True)
+    try:
+        os.makedirs(LOGS_DIR, exist_ok=True)
+    except Exception:
+        pass
 
     root = logging.getLogger()
     root.setLevel(level)
@@ -31,16 +36,20 @@ def setup_logging(level=logging.INFO):
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    # 1) Файл с ротацией (5 МБ × 5 файлов)
-    file_handler = logging.handlers.RotatingFileHandler(
-        LOG_FILE,
-        maxBytes=5 * 1024 * 1024,
-        backupCount=5,
-        encoding="utf-8",
-    )
-    file_handler.setFormatter(fmt)
-    file_handler.setLevel(level)
-    root.addHandler(file_handler)
+    # 1) Файл с ротацией (5 МБ × 5 файлов). Если открыть не удалось
+    #    (файл занят, папка только для чтения) — работаем без файла.
+    try:
+        file_handler = logging.handlers.RotatingFileHandler(
+            LOG_FILE,
+            maxBytes=5 * 1024 * 1024,
+            backupCount=5,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(fmt)
+        file_handler.setLevel(level)
+        root.addHandler(file_handler)
+    except Exception as e:
+        print(f"[LOGGING] Не удалось открыть {LOG_FILE}: {e} — только консоль")
 
     # 2) Консоль (для отладки в PyCharm / терминале)
     console = logging.StreamHandler(sys.stdout)
@@ -66,4 +75,6 @@ def setup_logging(level=logging.INFO):
 
     threading.excepthook = _thread_excepthook
 
+    with _lock:
+        _initialized = True
     logging.getLogger(__name__).info("Логирование инициализировано: %s", LOG_FILE)

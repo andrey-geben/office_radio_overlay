@@ -5274,3 +5274,134 @@ input[type="file"]::file-selector-button:hover {
 /* Студийный пульт: золотая линия и синие LED-подписи */
 [data-theme="studio"] .stack-unit h2 { border-bottom: 1px solid rgba(201,161,74,.35); padding-bottom: 4px; }
 [data-theme="studio"] .lamp-item.active { box-shadow: 0 0 8px rgba(74,168,255,.35); }
+
+/* =====================================================================
+   ТЕМА: СЛОНОВАЯ КОСТЬ И КРАСНОЕ ДЕРЕВО (IVORY & MAHOGANY)
+   ===================================================================== */
+[data-theme="ivory"] {
+    --bg-body: #efe4d2;
+    --chassis: #f6efdf;
+    --chassis-edge: #a98f6a;
+    --module-a: #fbf5e8;
+    --module-b: #efe4cf;
+    --module-border: #a8895f;
+    --module-hi: #fffdf7;
+    --panel: #e6d8bf;
+    --panel-hi: #f3ead7;
+    --text: #3a2a1c;
+    --text-dim: #6a5237;
+    --text-mute: #9a8161;
+    --text-strong: #8c2f1e;
+    --accent: #a33a24;
+    --accent-2: #7c2716;
+    --accent-glow: rgba(163, 58, 36, 0.30);
+    --display-bg: #2b1a11;
+    --display-fg: #ffd9a8;
+    --display-glow: 0 0 5px rgba(255, 217, 168, 0.45);
+    --led-green: #2f7d3a;
+    --led-red: #b3261e;
+    --led-amber: #c98a2e;
+    --btn-face: linear-gradient(180deg, #fbf4e5 0%, #ddccae 100%);
+    --btn-face-hover: linear-gradient(180deg, #fffaf0 0%, #e6d7bb 100%);
+    --btn-border: #9c8058;
+    --btn-shadow: inset 0 1px 0 #fffdf6, 0 2px 0 #8d7150, 0 3px 4px rgba(90, 60, 30, .25);
+    --chrome: #7a5a3c;
+    --chrome-hi: #b08d57;
+    --divider: #b49a74;
+    --input-bg: #fffdf6;
+    --input-fg: #4a2c1a;
+    --input-border: #b49a74;
+    --ok-color: #2f7d3a;
+    --warn-color: #b3261e;
+}
+
+[data-theme="ivory"] body {
+    background: radial-gradient(ellipse at top, #f8f1e3 0%, #e7d9c1 70%);
+    color: #3a2a1c;
+}
+[data-theme="ivory"] header.topbar {
+    background: linear-gradient(180deg, #7b3a26 0%, #5a2417 100%) !important;
+    border-bottom: 2px solid #3d180e;
+    border-radius: 2px;
+}
+[data-theme="ivory"] header.topbar h1,
+[data-theme="ivory"] header.topbar .user-name {
+    background: transparent !important; border: 0 !important; box-shadow: none !important;
+    color: #fdf6e6; letter-spacing: 1.4px;
+    text-shadow: 0 1px 0 #2a0f07;
+}
+[data-theme="ivory"] header.topbar .btn,
+[data-theme="ivory"] header.topbar .btn-logout {
+    background: linear-gradient(180deg, #f7efdf 0%, #d9c6a6 100%);
+    color: #4a2416 !important;
+    border: 1px solid #3d180e;
+}
+[data-theme="ivory"] header.topbar .role-badge {
+    background: #c9a14a; color: #2b1408;
+}
+[data-theme="ivory"] .stack-unit,
+[data-theme="ivory"] .output-panel,
+[data-theme="ivory"] .modal-content,
+[data-theme="ivory"] .card {
+    background: linear-gradient(180deg, #fdf8ec 0%, #efe3cd 100%);
+    border: 1px solid #a8895f;
+    border-radius: 3px;
+    box-shadow: inset 0 1px 0 #fffdf7, 0 2px 4px rgba(90, 60, 30, .18);
+}
+[data-theme="ivory"] .label,
+[data-theme="ivory"] .hint,
+[data-theme="ivory"] .output-panel-title,
+[data-theme="ivory"] .eq-label,
+[data-theme="ivory"] .queue-label,
+[data-theme="ivory"] .output-flow-title,
+[data-theme="ivory"] .stack-unit h2,
+[data-theme="ivory"] .form-row label {
+    color: #8c2f1e !important;
+    letter-spacing: .6px;
+}
+[data-theme="ivory"] .value,
+[data-theme="ivory"] .meter-value {
+    color: #5a2417;
+}
+[data-theme="ivory"] .meter path { stroke: #b08d57; }
+[data-theme="ivory"] .meter circle { fill: #7a5a3c; }
+[data-theme="ivory"] .btn,
+[data-theme="ivory"] .transport-btn {
+    color: #4a2416;
+    border-radius: 3px;
+}
+[data-theme="ivory"] .btn-save,
+[data-theme="ivory"] .btn-start {
+    background: linear-gradient(180deg, #a33a24 0%, #7c2716 100%);
+    color: #fdf6e6 !important;
+    border-color: #3d180e;
+}
+[data-theme="ivory"] input[type="text"],
+[data-theme="ivory"] input[type="password"],
+[data-theme="ivory"] input[type="number"],
+[data-theme="ivory"] select,
+[data-theme="ivory"] textarea {
+    background: #fffdf6;
+    color: #4a2c1a;
+    border: 1px solid #b49a74;
+    border-radius: 2px;
+}
+[data-theme="ivory"] .lamp-item {
+    background: linear-gradient(180deg, #fbf4e5 0%, #e8dac0 100%);
+    border: 1px solid #b49a74;
+}
+[data-theme="ivory"] .lamp-label { color: #8c2f1e; }
+[data-theme="ivory"] .evraz-speaker .speaker-cabinet {
+    filter: sepia(.35) saturate(1.25) brightness(1.05);
+}
+[data-theme="ivory"] .footer { color: #7a5a3c; border-top-color: #c9b28e; }
+[data-theme="ivory"] .warn { color: #b3261e; }
+
+/* Ivory: контраст служебных подписей */
+[data-theme="ivory"] .output-flow-type,
+[data-theme="ivory"] .lamp-power,
+[data-theme="ivory"] .sip-strip-text,
+[data-theme="ivory"] .sip-strip-hint,
+[data-theme="ivory"] .meter-label,
+[data-theme="ivory"] .meter-value small { color: #5a2417; }
+[data-theme="ivory"] .output-flow-info { color: #6a5237; }

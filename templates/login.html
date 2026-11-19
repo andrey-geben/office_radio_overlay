@@ -71,9 +71,9 @@
     (function () {
         var btn = document.getElementById('login-theme');
         if (!btn) return;
-        var THEMES = ['dark', 'light', 'winamp', 'studio', 'military', 'hifi', 'terminal'];
+        var THEMES = ['dark', 'light', 'winamp', 'studio', 'military', 'hifi', 'terminal', 'ivory'];
         var ICONS = { dark: '☾', light: '☀', winamp: '🎵',
-                      studio: '🎚', military: '🪖', hifi: '📻', terminal: '🖥' };
+                      studio: '🎚', military: '🪖', hifi: '📻', terminal: '🖥', ivory: '🪵' };
         function icon(t) { return ICONS[t] || '☾'; }
         var cur = document.documentElement.getAttribute('data-theme') || 'dark';
         btn.textContent = icon(cur);

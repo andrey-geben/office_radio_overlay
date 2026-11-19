@@ -52,7 +52,8 @@
             </header>
 
             <!-- ==== МОДУЛЬ 2: ТРАНСПОРТ ==== -->
-            <div class="transport stack-unit">
+            <div id="warn-banner" class="hint warn" style="display:none; margin:8px 0 0;"></div>
+        <div class="transport stack-unit">
                 {% if role == 'admin' %}
                 <button class="transport-btn btn-play" id="btn-start" title="Запустить трансляцию">
                     <span class="t-icon">▶</span><span class="t-label">PLAY</span>
@@ -595,6 +596,7 @@
                     <option value="military">Военный приёмник</option>
                     <option value="hifi">Hi-Fi 70-х</option>
                     <option value="terminal">Терминал (CRT)</option>
+                    <option value="ivory">Слоновая кость и красное дерево</option>
                 </select>
             </label>
             <label>&nbsp;</label>

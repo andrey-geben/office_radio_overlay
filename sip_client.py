@@ -289,6 +289,16 @@ class SipClient:
         t0 = time.time()
         print(f"[SIP] [{t0:.3f}] incoming: start_sip_chime")
 
+        # Если звучит объявление — даём ему доиграть, чтобы chime
+        # не обрывал фразу на полуслове.
+        try:
+            ann_left = float(self.engine.get_announcement_seconds_left() or 0.0)
+        except Exception:
+            ann_left = 0.0
+        if ann_left > 0:
+            print(f"[SIP] Ждём окончания объявления ({ann_left:.1f} c)")
+            time.sleep(min(ann_left + 0.2, 15.0))
+
         try:
             ok = self.engine.start_sip_chime()
         except Exception as e:
@@ -300,6 +310,17 @@ class SipClient:
         if not ok:
             print("[SIP] Занято — отклоняем (486)")
             self._send({"cmd": "answer", "status": 486})
+            return
+
+        # Эфир остановлен: сигнала внимания нет, соединяем сразу.
+        try:
+            engine_running = bool(self.engine.get_state().get("running"))
+        except Exception:
+            engine_running = True
+        if not engine_running:
+            print("[SIP] Эфир остановлен — отвечаем без ожидания сигнала")
+            time.sleep(0.2)
+            self._send({"cmd": "answer", "status": 200})
             return
 
         # 1) Ждём, пока chime сгенерирован (engine -> HW queue)
