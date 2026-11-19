@@ -148,7 +148,25 @@
                             <div class="led"></div>
                             <div class="lamp-label">SIP</div>
                         </div>
+                    
+
+<div class="sip-status-strip state-off" id="sip-status-strip">
+                    <span class="sip-strip-led off" id="sip-strip-led"></span>
+                    <span class="sip-strip-label">SIP</span>
+                    <span class="sip-strip-text" id="sip-strip-text">отключён</span>
+                    <span class="sip-strip-hint" id="sip-strip-hint">—</span>
+                </div>
+
+<div class="output-flow">
+                    <div class="output-flow-title">📡 ИСХОДЯЩИЙ ПОТОК</div>
+                    <div class="output-flow-grid">
+                        <div class="output-flow-type idle" id="of-type">⏹ IDLE</div>
+                        <div class="output-flow-info" id="of-info">—</div>
+                        <div class="of-meter" id="of-meter"></div>
+                        <div class="output-flow-level" id="of-level">−∞ dB</div>
                     </div>
+                </div>
+</div>
                 </div>
 
                 <div class="panels-row" id="panels-row">
@@ -180,22 +198,9 @@
                     </div>
                 </div>
 
-                <div class="sip-status-strip state-off" id="sip-status-strip">
-                    <span class="sip-strip-led off" id="sip-strip-led"></span>
-                    <span class="sip-strip-label">SIP</span>
-                    <span class="sip-strip-text" id="sip-strip-text">отключён</span>
-                    <span class="sip-strip-hint" id="sip-strip-hint">—</span>
-                </div>
+                
 
-                <div class="output-flow">
-                    <div class="output-flow-title">📡 ИСХОДЯЩИЙ ПОТОК</div>
-                    <div class="output-flow-grid">
-                        <div class="output-flow-type idle" id="of-type">⏹ IDLE</div>
-                        <div class="output-flow-info" id="of-info">—</div>
-                        <div class="of-meter" id="of-meter"></div>
-                        <div class="output-flow-level" id="of-level">−∞ dB</div>
-                    </div>
-                </div>
+                
 
                 <button type="button" class="btn btn-refresh" onclick="showLogs()">📄 Показать логи</button>
 
