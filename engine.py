@@ -414,6 +414,7 @@ class RadioOverlayEngine:
                 self._ann_active = False
                 self._ann_pos = 0
 
+        self._flush_hw_for_chime()
         feeder = getattr(self, "_feed_chime_direct", None)
         if feeder is None:
             # Смешанный/старый билд: откатываемся к микшированию в потоке,
@@ -483,9 +484,18 @@ class RadioOverlayEngine:
             output_pos=0.0,
             output_total=self.get_chime_seconds(),
         )
+        self._flush_hw_for_chime()
         threading.Thread(target=self._feed_chime_direct, args=(chime,), daemon=True).start()
         logger.info("Тест сигнала: запущен прямой проигрыш")
         return {"ok": True}
+
+    def _flush_hw_for_chime(self):
+        """Гасит хвост радио в буфере карты, чтобы chime начался сразу."""
+        try:
+            self._hw_output.clear()
+            logger.info("chime: буфер карты очищен перед сигналом")
+        except Exception as e:
+            logger.warning("chime: не удалось очистить буфер: %s", e)
 
     def _feed_chime_direct(self, chime):
         """Подаёт chime прямо в звуковую карту с жёстким темпом.
