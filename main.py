@@ -267,6 +267,8 @@ def _boot_autostart():
 
     for kind in SIP_KINDS:
         f = _sip_fields(kind)
+        if kind == "pgs" and not saved.get("pgs_enabled", True):
+            continue
         if not saved.get(f["auto"]):
             continue
         if not (saved.get(f["domain"]) and saved.get(f["username"]) and saved.get(f["password"])):
@@ -514,7 +516,7 @@ def api_about():
         except Exception:
             pass
     return jsonify({
-        "version": "1.4.1",
+        "version": "1.4.2",
         "author": "Andrey Geben",
         "github": "https://github.com/andrey-geben/office_radio_overlay",
         "license": "MIT",
@@ -886,6 +888,8 @@ def _sip_start_impl(kind):
 
     f = _sip_fields(kind)
     saved = settings_store.load()
+    if kind == "pgs" and not saved.get("pgs_enabled", True):
+        return jsonify({"ok": False, "error": "ПГС отключён галочкой «Включить ПГС»"}), 400
     if not password:
         password = saved.get(f["password"], "")
     if not password:
@@ -964,10 +968,32 @@ def _sip_status_impl(kind):
         "sip_port": saved.get(f["port"], 5060),
         "sip_transport": saved.get(f["transport"], "udp"),
         "auto_start_sip": saved.get(f["auto"], False),
+        "enabled": saved.get("pgs_enabled", True) if kind == "pgs" else True,
         "auto_start_engine": saved.get("auto_start_engine", False),
         "sip_chime_enabled": saved.get("sip_chime_enabled", True),
         "sip_answer_delay_ms": saved.get("sip_answer_delay_ms", 400),
     })
+
+
+@app.route("/api/sip/<kind>/enable", methods=["POST"])
+@admin_required
+def api_sip_enable_kind(kind):
+    if kind not in SIP_KINDS:
+        return jsonify({"ok": False, "error": "неизвестный SIP-клиент"}), 404
+    data = request.get_json(silent=True) or {}
+    enabled = bool(data.get("enabled"))
+    if kind == "pgs":
+        settings_store.update(pgs_enabled=enabled)
+        if not enabled:
+            client = sip_clients.get("pgs")
+            if client is not None:
+                client.stop()
+            try:
+                if engine.get_sip_kind() == "pgs":
+                    engine.reset_sip_state()
+            except Exception:
+                pass
+    return jsonify({"ok": True, "enabled": enabled})
 
 
 @app.route("/api/sip/<kind>/save", methods=["POST"])

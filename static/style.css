@@ -5673,3 +5673,77 @@ input[type="file"]::file-selector-button:hover {
     text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 [data-theme="terminal"] .theme-knob { color: #01140a; }
+
+/* =====================================================================
+   WINAMP: ближе к классическому 2.x (по эталонному скриншоту)
+   ===================================================================== */
+[data-theme="winamp"] {
+    --bg-body: #242424;
+    --chassis: #1c1c1c;
+    --module-a: #333333;
+    --module-b: #282828;
+    --panel: #101010;
+    --panel-hi: #1e1e1e;
+    --divider: #0b0b0b;
+}
+[data-theme="winamp"] body { background: #242424; }
+
+[data-theme="winamp"] header.topbar {
+    background: linear-gradient(180deg, #4a5f78 0%, #22303f 50%, #0e1720 100%) !important;
+    border-bottom: 1px solid #05080b;
+}
+[data-theme="winamp"] header.topbar h1 { color: #f2f6fa; }
+
+[data-theme="winamp"] .stack-unit,
+[data-theme="winamp"] .card,
+[data-theme="winamp"] .output-panel {
+    background: linear-gradient(180deg, #343434 0%, #2a2a2a 100%);
+    border: 1px solid #060606;
+    box-shadow: inset 1px 1px 0 #5c5c5c, inset -1px -1px 0 #141414;
+}
+
+/* «Плейлист» Winamp: чёрный список с зелёным моношрифтом */
+[data-theme="winamp"] .queue-panel,
+[data-theme="winamp"] .queue-list,
+[data-theme="winamp"] #queue-list {
+    background: #000;
+    border: 1px solid #0a0a0a;
+    box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.9);
+}
+[data-theme="winamp"] .queue-label {
+    background: linear-gradient(180deg, #4a4a4a 0%, #2b2b2b 100%);
+    color: #e8e8e8 !important;
+    border-bottom: 1px solid #000;
+    padding: 4px 8px;
+    letter-spacing: 1.4px;
+}
+[data-theme="winamp"] .queue-item,
+[data-theme="winamp"] .queue-empty,
+[data-theme="winamp"] .queue-item * {
+    color: #33ff66;
+    font-family: Consolas, "Courier New", monospace;
+    text-shadow: 0 0 4px rgba(0, 255, 90, 0.35);
+}
+[data-theme="winamp"] .queue-hint {
+    color: #1f9c46;
+    font-family: Consolas, "Courier New", monospace;
+}
+
+/* Эквалайзер и «стекло» приборов — как в скине */
+[data-theme="winamp"] #eq-canvas {
+    background: #000;
+    border: 1px solid #0a0a0a;
+    box-shadow: inset 1px 1px 0 #3a3a3a, inset -1px -1px 0 #141414;
+}
+[data-theme="winamp"] .meter-housing {
+    border-radius: 0;
+    box-shadow: inset 1px 1px 0 #5c5c5c, inset -1px -1px 0 #101010;
+}
+[data-theme="winamp"] .meter-housing .meter { border-radius: 0; }
+
+/* Кнопки — узкая фаска, как в Winamp */
+[data-theme="winamp"] .btn,
+[data-theme="winamp"] .transport-btn {
+    border-radius: 0;
+    box-shadow: inset 1px 1px 0 #8a8a8a, inset -1px -1px 0 #1a1a1a;
+}

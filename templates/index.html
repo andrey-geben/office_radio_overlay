@@ -320,7 +320,7 @@
         </div><!-- /.stack-system -->
 
         <footer class="footer">
-            © 2026 Andrey Geben · <a href="https://github.com/andrey-geben/office_radio_overlay" target="_blank">Office Radio Overlay</a> · MIT License · v1.4.1
+            © 2026 Andrey Geben · <a href="https://github.com/andrey-geben/office_radio_overlay" target="_blank">Office Radio Overlay</a> · MIT License · v1.4.2
         </footer>
     </main>
 
@@ -685,6 +685,13 @@
         <span id="sip-message" class="upload-status"></span>
 
         <h3 style="margin-top:22px;">2. ПГС — производственные сообщения</h3>
+        <label class="checkbox-row" style="margin-bottom:8px;">
+            <input type="checkbox" id="pgs_enabled" checked>
+            Включить ПГС (второй SIP-клиент)
+        </label>
+        <div class="hint" id="pgs-disabled-hint" style="display:none; margin-bottom:8px;">
+            ПГС выключен галочкой: клиент не запускается, автозапуск игнорируется.
+        </div>
         <div class="hint" style="margin-bottom:8px;">
             Приоритет ниже: во время ЛСО или сигнала внимания звонок отклоняется.
             Кто может дозвониться — определяется на АТС, списки в приложении не ведутся.

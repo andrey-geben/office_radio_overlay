@@ -1809,14 +1809,25 @@ async function refreshPgsStatus() {
         const r = await fetch('/api/sip/pgs/status');
         if (!r.ok) return;
         const data = await r.json();
-        if ($('pgs-status')) $('pgs-status').textContent = data.running ? '✅ подключён' : '⏹ отключён';
+        const pgsEnabled = data.enabled !== false;
+        if ($('pgs_enabled')) $('pgs_enabled').checked = pgsEnabled;
+        if ($('pgs-disabled-hint')) $('pgs-disabled-hint').style.display = pgsEnabled ? 'none' : '';
+        if ($('pgs-status')) {
+            $('pgs-status').textContent = !pgsEnabled
+                ? '⏸ выключен галочкой'
+                : (data.running ? '✅ подключён' : '⏹ отключён');
+        }
+        ['pgs_domain', 'pgs_username', 'pgs_password', 'pgs_port', 'pgs_transport',
+         'auto_start_pgs', 'btn-pgs-save', 'btn-pgs-start'].forEach((id) => {
+            if ($(id)) $(id).disabled = !pgsEnabled;
+        });
         if ($('pgs-engine')) {
             $('pgs-engine').textContent = data.engine_sip_active
                 ? (data.engine_sip_kind === 'pgs' ? '📞 ПГС в эфире' : '📞 ЛСО в эфире')
                 : '—';
         }
         if ($('btn-pgs-start')) $('btn-pgs-start').disabled = data.running;
-        if ($('btn-pgs-stop')) $('btn-pgs-stop').disabled = !data.running;
+        if ($('btn-pgs-stop')) $('btn-pgs-stop').disabled = !pgsEnabled || !data.running;
         if (!pgsInitialized) {
             $('pgs_domain').value = data.sip_domain || '';
             $('pgs_username').value = data.sip_username || '';
@@ -1872,6 +1883,16 @@ function bindPgs() {
         await fetch('/api/sip/pgs/stop', { method: 'POST' });
         refreshPgsStatus();
     };
+    if ($('pgs_enabled')) {
+        $('pgs_enabled').onchange = async (e) => {
+            await fetch('/api/sip/pgs/enable', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: e.target.checked }),
+            });
+            refreshPgsStatus();
+        };
+    }
     if ($('auto_start_pgs')) {
         $('auto_start_pgs').onchange = async (e) => {
             await fetch('/api/autostart', {
