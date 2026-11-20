@@ -163,5 +163,26 @@ class TwoSipClientsTest(unittest.TestCase):
         self.assertTrue(lso._allow_incoming())
 
 
+
+class ChannelsTest(unittest.TestCase):
+    def test_channels_switch(self):
+        old = main.engine.get_settings().get("fallback_sources", [])
+        try:
+            main.engine.set_fallback_sources([
+                {"name": "Резерв А", "url": "https://example.com/a.mp3"},
+                {"name": "Резерв Б", "url": "https://example.com/b.mp3"},
+            ])
+            items = main.engine.get_channels()
+            self.assertEqual(len(items), 3)
+            ok, name = main.engine.switch_channel(1)
+            self.assertTrue(ok)
+            self.assertEqual(name, "Резерв А")
+            self.assertEqual(main.engine.get_channels()[1]["active"], True)
+        finally:
+            main.engine.set_fallback_sources(old)
+            main.engine._manual_channel = None
+            main.engine._channel_index = 0
+
+
 if __name__ == "__main__":
     unittest.main()

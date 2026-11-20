@@ -516,7 +516,7 @@ def api_about():
         except Exception:
             pass
     return jsonify({
-        "version": "1.4.5",
+        "version": "1.5.0",
         "author": "Andrey Geben",
         "github": "https://github.com/andrey-geben/office_radio_overlay",
         "license": "MIT",
@@ -797,6 +797,26 @@ def api_apply_tone():
 
 
 # ==================== Fallback ====================
+@app.route("/api/channels", methods=["GET"])
+@login_required
+def api_channels():
+    return jsonify({"items": engine.get_channels()})
+
+
+@app.route("/api/channels/switch", methods=["POST"])
+@admin_required
+def api_channels_switch():
+    data = request.get_json(silent=True) or {}
+    step = data.get("step", 1)
+    index = data.get("index")
+    try:
+        step = int(step)
+    except (TypeError, ValueError):
+        step = 1
+    ok, msg = engine.switch_channel(step=step, index=index)
+    return jsonify({"ok": ok, "message": msg, "items": engine.get_channels()}), (200 if ok else 400)
+
+
 @app.route("/api/fallback/sources", methods=["GET"])
 @admin_required
 def api_get_fallback_sources():

@@ -122,6 +122,8 @@ class RadioOverlayEngine:
         self._sip_call = None
         self._sip_kind = None
         self._sip_peers = {}
+        self._manual_channel = None
+        self._channel_index = 0
 
         self._chime_data = None
         self._chime_active = False
@@ -1270,6 +1272,47 @@ class RadioOverlayEngine:
         self._update_state(cpu_percent=round(cpu, 1), network_bps=net_bps)
 
     # ==================== Менеджер источников ====================
+    def get_channels(self):
+        """Список каналов: основной + резервные (с названиями)."""
+        s = self.get_settings()
+        items = []
+        main = (s.get("radio_url") or "").strip()
+        if main:
+            items.append({"index": 0, "name": "Основной", "url": main, "is_main": True})
+        for r in (s.get("fallback_sources") or []):
+            url = (r.get("url") or "").strip()
+            if not url:
+                continue
+            items.append({
+                "index": len(items),
+                "name": r.get("name") or f"Резерв {len(items)}",
+                "url": url,
+                "is_main": False,
+            })
+        with self._lock:
+            active = self._channel_index if 0 <= self._channel_index < len(items) else 0
+        for it in items:
+            it["active"] = it["index"] == active
+        return items
+
+    def switch_channel(self, step=1, index=None):
+        """Ручное переключение канала (шаг вперёд/назад или индекс)."""
+        items = self.get_channels()
+        if len(items) <= 1:
+            return False, "Нет резервных каналов для переключения"
+        with self._lock:
+            cur = self._channel_index if 0 <= self._channel_index < len(items) else 0
+        new = int(index) if index is not None else (cur + int(step)) % len(items)
+        if not (0 <= new < len(items)):
+            return False, "Неверный номер канала"
+        with self._lock:
+            self._manual_channel = new
+            self._channel_index = new
+        audio_capture.stop_active_ffmpeg()  # разбудить менеджер потока
+        self._set_event(f"Переключение канала: {items[new]['name']}", force=True)
+        logger.info("Канал переключён вручную: %s", items[new]["name"])
+        return True, items[new]["name"]
+
     def _stream_manager(self):
         s = self.get_settings()
 
@@ -1308,7 +1351,9 @@ class RadioOverlayEngine:
         except (TypeError, ValueError):
             retry_main = 60
 
-        reserves = s.get("fallback_sources", []) if fallback_enabled else []
+        with self._lock:
+            manual_on = self._manual_channel is not None
+        reserves = s.get("fallback_sources", []) if (fallback_enabled or manual_on) else []
         sources = [{"name": "Основной", "url": main_url, "is_main": True}]
         for i, r in enumerate(reserves):
             url = (r.get("url") or "").strip()
@@ -1338,6 +1383,12 @@ class RadioOverlayEngine:
         idx = 0
         last_try_main = 0.0
         while not self._stop_event.is_set():
+            with self._lock:
+                manual = self._manual_channel
+            if manual is not None and 0 <= manual < len(sources):
+                idx = manual
+            with self._lock:
+                self._channel_index = idx
             src = sources[idx]
             self._update_state(
                 current_source=src["name"],

@@ -57,6 +57,12 @@
                 <button class="transport-btn btn-play" id="btn-start" title="Запустить трансляцию">
                     <span class="t-icon">▶</span><span class="t-label">PLAY</span>
                 </button>
+                <button class="transport-btn" id="btn-prev-channel" title="Предыдущий канал" disabled>
+                    <span class="t-icon">⏮</span><span class="t-label">КАНАЛ</span>
+                </button>
+                <button class="transport-btn" id="btn-next-channel" title="Следующий канал" disabled>
+                    <span class="t-icon">⏭</span><span class="t-label">КАНАЛ</span>
+                </button>
                 <button class="transport-btn btn-stop" id="btn-stop" title="Остановить трансляцию">
                     <span class="t-icon">⏹</span><span class="t-label">STOP</span>
                 </button>
@@ -69,10 +75,7 @@
                 <button class="transport-btn" data-open="modal-settings" title="Настройки">
                     <span class="t-icon">⚙</span><span class="t-label">НАСТРОЙКИ</span>
                 </button>
-                <button class="transport-btn btn-sip-transport" data-open="modal-sip" title="SIP / ЛСО">
-                    <span class="t-icon">📞</span><span class="t-label">SIP</span>
-                    <span class="btn-led off" id="sip-btn-led"></span>
-                </button>
+                
                 {% endif %}
                 <button class="transport-btn" data-open="modal-about" title="О программе">
                     <span class="t-icon">ℹ</span><span class="t-label">О ПРОГРАММЕ</span>
@@ -203,10 +206,19 @@
                     </div>
                 </div>
 
-                
+                <div class="playlist-panel">
+                    <div class="playlist-title">💿 ПЛЕЙЛИСТ КАНАЛОВ</div>
+                    <div id="channel-list" class="channel-list">
+                        <div class="channel-empty">Загрузка...</div>
+                    </div>
+                </div>
 
                 
 
+                
+
+                <button type="button" class="btn btn-refresh sip-cd-btn" data-open="modal-sip"
+                        title="SIP: ЛСО и ПГС">💿 SIP / ЛСО / ПГС</button>
                 <button type="button" class="btn btn-refresh" onclick="showLogs()">📄 Показать логи</button>
 
                 <div class="status-grid">
@@ -320,7 +332,7 @@
         </div><!-- /.stack-system -->
 
         <footer class="footer">
-            © 2026 Andrey Geben · <a href="https://github.com/andrey-geben/office_radio_overlay" target="_blank">Office Radio Overlay</a> · MIT License · v1.4.5
+            © 2026 Andrey Geben · <a href="https://github.com/andrey-geben/office_radio_overlay" target="_blank">Office Radio Overlay</a> · MIT License · v1.5.0
         </footer>
     </main>
 
@@ -619,6 +631,7 @@
     <div class="modal-backdrop" data-close></div>
     <div class="modal-content">
         <button class="modal-close" data-close>×</button>
+        <div class="cd-disc" aria-hidden="true"></div>
         <h2>📞 SIP: ЛСО и ПГС</h2>
 
         <details class="help-block">

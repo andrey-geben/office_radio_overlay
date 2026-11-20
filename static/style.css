@@ -5747,3 +5747,115 @@ input[type="file"]::file-selector-button:hover {
     border-radius: 0;
     box-shadow: inset 1px 1px 0 #8a8a8a, inset -1px -1px 0 #1a1a1a;
 }
+
+/* ===== Плейлист каналов ===== */
+.playlist-panel {
+    margin-top: 12px;
+    border: 1px solid var(--module-border);
+    background: var(--panel);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.playlist-title {
+    padding: 5px 10px;
+    font-size: 11px;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--text-strong);
+    border-bottom: 1px solid var(--divider);
+    background: var(--panel-hi);
+}
+.channel-list {
+    display: flex;
+    flex-direction: column;
+    max-height: 190px;
+    overflow-y: auto;
+}
+.channel-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 10px;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--divider);
+    color: var(--text);
+    cursor: pointer;
+}
+.channel-item:hover { background: rgba(255, 255, 255, 0.05); }
+.channel-item.active {
+    background: rgba(255, 200, 120, 0.10);
+    box-shadow: inset 3px 0 0 var(--accent);
+    color: var(--text-strong);
+}
+.channel-item .ch-name { font-size: 12px; font-weight: 600; }
+.channel-item .ch-url {
+    font-size: 10px;
+    opacity: 0.55;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+.channel-empty { padding: 10px; color: var(--text-mute); font-size: 12px; }
+
+/* ===== SIP как CD-проигрыватель ===== */
+.sip-cd-btn {
+    width: 100%;
+    margin-top: 10px;
+    background: linear-gradient(180deg, #2f3945 0%, #141a21 100%);
+    border: 1px solid #3d4a59;
+    color: #e6eef8;
+    letter-spacing: 1px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+.sip-cd-btn:hover {
+    background: linear-gradient(180deg, #3a4755 0%, #1a222b 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 0 12px rgba(110, 190, 255, 0.25);
+}
+
+#modal-sip .modal-content {
+    position: relative;
+    border-radius: 18px;
+    border: 1px solid #3d4a59;
+    background: linear-gradient(160deg, #1d232b 0%, #0b0e12 60%, #070a0d 100%);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    animation: cdSlide 0.32s ease-out;
+    overflow: hidden;
+}
+@keyframes cdSlide {
+    from { transform: translateX(40px) scale(0.98); opacity: 0; }
+    to   { transform: translateX(0) scale(1); opacity: 1; }
+}
+.cd-disc {
+    position: absolute;
+    top: 14px;
+    right: 54px;
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background:
+        repeating-radial-gradient(circle at 50% 50%, #2c333b 0 2px, #1a2027 2px 4px),
+        conic-gradient(from 20deg, #6f8aa5, #dfe9f5, #7f9ab5, #cdd9e6, #6f8aa5);
+    box-shadow: 0 0 10px rgba(120, 180, 240, 0.25), inset 0 0 6px rgba(0, 0, 0, 0.6);
+    animation: cdspin 6s linear infinite;
+    pointer-events: none;
+}
+.cd-disc::after {
+    content: "";
+    position: absolute;
+    inset: 38%;
+    border-radius: 50%;
+    background: #0a0c0f;
+    border: 1px solid #4a5664;
+}
+@keyframes cdspin { to { transform: rotate(360deg); } }
+
+/* CD-стиль в остальных темах — только каркас, цвета не ломаем */
+[data-theme="light"] .sip-cd-btn,
+[data-theme="ivory"] .sip-cd-btn {
+    background: linear-gradient(180deg, #e8e2d6 0%, #b9b2a4 100%);
+    color: #2a2620;
+    border-color: #8f887a;
+}

@@ -882,6 +882,68 @@ async function loadSinkDevices() {
     } catch (e) { console.error(e); }
 }
 
+
+// ==================== Каналы (плейлист) ====================
+async function loadChannels() {
+    const list = $('channel-list');
+    if (!list) return;
+    try {
+        const r = await fetch('/api/channels');
+        if (!r.ok) return;
+        const data = await r.json();
+        const items = data.items || [];
+        list.innerHTML = '';
+        if (!items.length) {
+            const d = document.createElement('div');
+            d.className = 'channel-empty';
+            d.textContent = 'Каналы не настроены';
+            list.appendChild(d);
+        }
+        items.forEach((it) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'channel-item' + (it.active ? ' active' : '');
+            const name = document.createElement('span');
+            name.className = 'ch-name';
+            name.textContent = (it.is_main ? '📻 ' : '🟡 ') + it.name;
+            const url = document.createElement('span');
+            url.className = 'ch-url';
+            url.textContent = it.url;
+            b.appendChild(name);
+            b.appendChild(url);
+            b.onclick = () => switchChannel(0, it.index);
+            list.appendChild(b);
+        });
+        const multi = items.length > 1;
+        if ($('btn-prev-channel')) $('btn-prev-channel').disabled = !multi;
+        if ($('btn-next-channel')) $('btn-next-channel').disabled = !multi;
+    } catch (e) { console.error(e); }
+}
+
+async function switchChannel(step, index) {
+    try {
+        const body = {};
+        if (index !== null && index !== undefined) body.index = index;
+        else body.step = step || 1;
+        const r = await fetch('/api/channels/switch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await r.json();
+        if (!data.ok) showToast(data.message || 'Не удалось переключить канал', true);
+        else showToast('Канал: ' + (data.message || ''), false);
+    } catch (e) { showToast('Ошибка: ' + e.message, true); }
+    loadChannels();
+}
+
+function bindChannels() {
+    if ($('btn-prev-channel')) $('btn-prev-channel').onclick = () => switchChannel(-1);
+    if ($('btn-next-channel')) $('btn-next-channel').onclick = () => switchChannel(1);
+    loadChannels();
+    setInterval(loadChannels, 5000);
+}
+
 // ==================== SIP ====================
 async function refreshSipStatus() {
     try {
@@ -2192,3 +2254,5 @@ initEqToggle();
 bindChimeLibrary();
 
 bindPgs();
+
+bindChannels();
