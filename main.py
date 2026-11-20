@@ -407,6 +407,30 @@ def _outputs_cached(ttl: float = 10.0):
     return _outputs_cache["items"]
 
 
+@app.route("/api/debug/audio", methods=["GET"])
+@admin_required
+def api_debug_audio():
+    """Быстрая диагностика аудио-состояния (для разбора звонков)."""
+    st = engine.get_state()
+    hw = None
+    try:
+        hw = engine.get_hw_output()
+    except Exception:
+        pass
+    return jsonify({
+        "sip_active": bool(st.get("sip_active")),
+        "chime_active": engine.is_chime_active(),
+        "chime_state": engine.get_chime_state(),
+        "chime_seconds": engine.get_chime_seconds(),
+        "running": bool(st.get("running")),
+        "hw_running": engine.is_hw_output_running(),
+        "hw_pending": (hw.pending_duration() if hw is not None else None),
+        "output_type": st.get("output_type"),
+        "output_name": st.get("output_name"),
+        "engine_alive": engine.is_alive(),
+    })
+
+
 @app.route("/api/status")
 @login_required
 def api_status():
@@ -453,7 +477,7 @@ def api_about():
         except Exception:
             pass
     return jsonify({
-        "version": "1.2.8",
+        "version": "1.2.9",
         "author": "Andrey Geben",
         "github": "https://github.com/andrey-geben/office_radio_overlay",
         "license": "MIT",

@@ -283,6 +283,7 @@ class RadioOverlayEngine:
             self._sip_call = sip_call
             self._state["sip_active"] = True
             chime_playing = self._chime_active
+        logger.info("SIP mode: ON (радио будет молчать)")
         self._set_event("📞 SIP-звонок в эфире", force=True)
         if not chime_playing:
             self._update_state(
@@ -299,6 +300,7 @@ class RadioOverlayEngine:
             self._sip_active = False
             self._sip_call = None
             self._state["sip_active"] = False
+        logger.info("SIP mode: OFF (радио возвращается)")
         self._set_event("streaming", force=True)
         self._update_state(
             output_type="idle",
@@ -1357,6 +1359,15 @@ class RadioOverlayEngine:
                     # а радио приглушается (отдаём тишину в выходной поток).
                     silence = b"\x00" * len(chunk)
                     self._push_output(silence, "sip", {"output_name": "SIP-звонок"})
+                    now = time.time()
+                    if now - getattr(self, "_sip_log_ts", 0) >= 1.0:
+                        self._sip_log_ts = now
+                        try:
+                            pend = self._hw_output.pending_duration()
+                        except Exception:
+                            pend = -1
+                        logger.info("SIP mode: в карту идёт тишина (pending=%.2f c, hw=%s)",
+                                    pend, self._hw_output.is_running())
                     continue
 
                 arr_i16 = np.frombuffer(chunk, dtype=np.int16)
