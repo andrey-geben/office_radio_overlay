@@ -478,7 +478,7 @@ def api_about():
         except Exception:
             pass
     return jsonify({
-        "version": "1.3.0",
+        "version": "1.3.1",
         "author": "Andrey Geben",
         "github": "https://github.com/andrey-geben/office_radio_overlay",
         "license": "MIT",
@@ -981,6 +981,8 @@ def api_chimes_select():
 @app.route("/api/chimes/upload", methods=["POST"])
 @admin_required
 def api_chimes_upload():
+    if request.content_length and request.content_length > 12 * 1024 * 1024:
+        return jsonify({"ok": False, "error": "Файл слишком большой (лимит 10 МБ)"}), 413
     f = request.files.get("file")
     if not f or not f.filename:
         return jsonify({"ok": False, "error": "Файл не выбран"}), 400

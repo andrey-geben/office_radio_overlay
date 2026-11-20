@@ -24,7 +24,8 @@ DEFAULT_FILE = "chime.wav"
 TARGET_RATE = 48000
 TARGET_CHANNELS = 1
 TARGET_DBFS = -1.0
-MAX_SECONDS = 10.0
+MAX_SECONDS = 5.0
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 МБ на файл сигнала
 
 
 def _ensure():
@@ -138,15 +139,28 @@ def _normalize_segment(seg):
             tail = min(len(seg), ms + 80)
             break
     seg = seg[head:tail]
-    if len(seg) > MAX_SECONDS * 1000:
-        seg = seg[: int(MAX_SECONDS * 1000)]
     seg = seg.fade_in(5).fade_out(150)
     return seg
 
 
 def add_from_file(original_name, file_obj):
-    """Конвертирует загруженный файл в chime WAV и добавляет в библиотеку."""
+    """Конвертирует загруженный файл в chime WAV и добавляет в библиотеку.
+
+    Поддерживаются MP3/WAV/OGG/FLAC/M4A (декодирование через ffmpeg/pydub).
+    Ограничения: не больше 10 МБ и не длиннее 5 секунд.
+    """
     _ensure()
+    # контроль размера
+    try:
+        pos = file_obj.stream.tell()
+        file_obj.stream.seek(0, os.SEEK_END)
+        size = file_obj.stream.tell()
+        file_obj.stream.seek(pos)
+    except Exception:
+        size = 0
+    if size and size > MAX_UPLOAD_BYTES:
+        return None, (f"Файл больше 10 МБ ({size / 1048576:.1f} МБ). "
+                      "Загрузите сигнал короче или с меньшим битрейтом.")
     from pydub import AudioSegment
     try:
         seg = AudioSegment.from_file(file_obj)
@@ -154,6 +168,10 @@ def add_from_file(original_name, file_obj):
         return None, f"Не удалось прочитать файл: {e}"
     if len(seg) < 120:
         return None, "Файл слишком короткий (меньше 0.12 с)"
+    if len(seg) > MAX_SECONDS * 1000 + 50:
+        return None, (f"Сигнал длиннее {MAX_SECONDS:.0f} секунд "
+                      f"({len(seg) / 1000:.1f} с). Обрежьте файл — "
+                      "длинный сигнал задерживает соединение.")
     try:
         seg = _normalize_segment(seg)
     except Exception as e:
