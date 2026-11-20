@@ -404,10 +404,10 @@ class RadioOverlayEngine:
         with self._lock:
             self._chime_data = chime
             self._chime_pos = 0
-            self._chime_active = True
-            # Сигнал играем напрямую в карту: не зависит от темпа источника
-            # и не растягивается, если поток радио подтормаживает.
+            # Сначала флаг режима, потом active: _run не должен успеть
+            # увидеть active=True при direct=False.
             self._chime_direct = True
+            self._chime_active = True
             self._chime_call = call
             if self._ann_active:
                 self._ann_active = False
@@ -422,6 +422,8 @@ class RadioOverlayEngine:
                 self._chime_direct = False
         else:
             threading.Thread(target=feeder, args=(chime,), daemon=True).start()
+            logger.info("SIP chime: прямой проигрыш запущен (%.2f c)",
+                        len(chime) / 2.0 / max(1, config.CHANNELS) / config.SAMPLE_RATE)
 
         self._set_event("🔔 Входящий звонок — сигнал внимания", force=True)
         self._update_state(
@@ -475,18 +477,30 @@ class RadioOverlayEngine:
         return {"ok": True}
 
     def _feed_chime_direct(self, chime):
-        """Подаёт chime прямо в звуковую карту с реальным темпом."""
+        """Подаёт chime прямо в звуковую карту с жёстким темпом.
+
+        Спим не «на каждый блок», а до абсолютного времени следующего блока:
+        таймер Windows округляет короткие sleep, и сигнал растягивался.
+        """
         block = config.BLOCK_SIZE * config.CHANNELS * 2
         block_sec = config.BLOCK_SIZE / float(config.SAMPLE_RATE)
+        total_blocks = (len(chime) + block - 1) // block
+        logger.info("chime direct: %.2f c, %d блоков по %.1f мс",
+                    len(chime) / 2.0 / max(1, config.CHANNELS) / config.SAMPLE_RATE,
+                    total_blocks, block_sec * 1000)
+        t_start = time.perf_counter()
         try:
-            for off in range(0, len(chime), block):
+            for i, off in enumerate(range(0, len(chime), block)):
                 with self._lock:
                     if not self._chime_active or not self._chime_direct:
                         return
+                target = t_start + (i + 1) * block_sec
+                now = time.perf_counter()
+                if target > now:
+                    time.sleep(target - now)
                 self._hw_output.push(chime[off:off + block])
                 with self._lock:
                     self._chime_pos = min(len(chime), off + block)
-                time.sleep(block_sec)
 
             deadline = time.time() + 3.0
             while time.time() < deadline:
@@ -497,6 +511,8 @@ class RadioOverlayEngine:
                     break
                 time.sleep(0.02)
         finally:
+            elapsed = time.perf_counter() - t_start
+            logger.info("chime direct done: %.2f c", elapsed)
             with self._lock:
                 still = self._chime_active and self._chime_direct
             if still:
@@ -1309,11 +1325,8 @@ class RadioOverlayEngine:
                     break
 
                 if self._chime_active:
-                    if self._chime_direct:
-                        # Сигнал играет отдельный поток прямо в карту,
-                        # радио в это время молчит.
-                        continue
-                    self._play_chime_chunk(chunk)
+                    # Пока звучит сигнал внимания, радио в карту не отдаём:
+                    # сигнал играет отдельный поток, и наложения быть не должно.
                     continue
 
                 if self._sip_active:

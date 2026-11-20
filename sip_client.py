@@ -323,49 +323,28 @@ class SipClient:
             self._send({"cmd": "answer", "status": 200})
             return
 
-        # 1) Ждём, пока сигнал РЕАЛЬНО зазвучит. Если поток в этот момент
-        #    переподключается, chime не начнётся — играем его напрямую в карту.
-        started = False
-        deadline = time.time() + 3.0
+        # 1) Ждём сигнал: и по состоянию движка, и по длительности файла,
+        #    чтобы ответ не ушёл раньше окончания chime.
+        try:
+            chime_secs = float(self.engine.get_chime_seconds() or 0.0)
+        except Exception:
+            chime_secs = 0.0
+        t_chime = time.time()
+        deadline = t_chime + max(1.0, chime_secs + 4.0)
+        state = (False, 0, 0)
         while time.time() < deadline:
             try:
-                active, pos, total = self.engine.get_chime_state()
+                state = self.engine.get_chime_state()
             except Exception:
-                active, pos, total = False, 0, 0
+                break
+            active, pos, total = state
             if not active:
                 break
-            if pos > 0:
-                started = True
+            if chime_secs and (time.time() - t_chime) >= chime_secs + 0.05:
                 break
             time.sleep(0.02)
-
-        t_gen = time.time()
-        if started:
-            print(f"[SIP] [{t_gen:.3f}] chime started in air (pos>0)")
-        else:
-            try:
-                active, pos, total = self.engine.get_chime_state()
-            except Exception:
-                active, pos, total = False, 0, 0
-            if active:
-                print("[SIP] поток не идёт — играем chime напрямую в устройство")
-                try:
-                    self.engine.cancel_chime()
-                    played = self.engine.play_chime_direct()
-                    print(f"[SIP] chime direct: {played:.2f} c")
-                except Exception as e:
-                    print(f"[SIP] chime direct error: {e}")
-
-        # 2) Ждём полного проигрывания сигнала (в эфире или напрямую)
-        wait_deadline = time.time() + 20.0
-        while time.time() < wait_deadline:
-            try:
-                active, pos, total = self.engine.get_chime_state()
-            except Exception:
-                break
-            if not active or (total and pos >= total):
-                break
-            time.sleep(0.02)
+        print(f"[SIP] chime done IN AIR (elapsed={time.time() - t_chime:.2f}s, "
+              f"expect={chime_secs:.2f}s, state={state})")
 
         # 2) Ждём, пока HW queue РЕАЛЬНО опустеет в эфире
         hw = None
