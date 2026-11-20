@@ -323,60 +323,20 @@ class SipClient:
             self._send({"cmd": "answer", "status": 200})
             return
 
-        # 1) Ждём сигнал: и по состоянию движка, и по длительности файла,
-        #    чтобы ответ не ушёл раньше окончания chime.
+        # 1) Ждём окончание сигнала строго по длительности файла.
+        #    Буфер карты не опрашиваем: после сигнала радио уже возвращается,
+        #    и «дренаж» мог ждать вечно (был ответ на 9-й секунде).
         try:
             chime_secs = float(self.engine.get_chime_seconds() or 0.0)
         except Exception:
             chime_secs = 0.0
         t_chime = time.time()
-        deadline = t_chime + max(1.0, chime_secs + 4.0)
-        state = (False, 0, 0)
-        while time.time() < deadline:
-            try:
-                state = self.engine.get_chime_state()
-            except Exception:
-                break
-            active, pos, total = state
-            if not active:
-                break
-            if chime_secs and (time.time() - t_chime) >= chime_secs + 0.05:
-                break
-            time.sleep(0.02)
-        print(f"[SIP] chime done IN AIR (elapsed={time.time() - t_chime:.2f}s, "
-              f"expect={chime_secs:.2f}s, state={state})")
-
-        # 2) Ждём, пока HW queue РЕАЛЬНО опустеет в эфире
-        hw = None
-        try:
-            hw = self.engine.get_hw_output()
-        except Exception as e:
-            print(f"[SIP] get_hw_output: {e}")
-
-        if hw is not None and hw.is_running():
-            deadline2 = time.time() + 6.0
-            while time.time() < deadline2:
-                try:
-                    remain = hw.pending_duration()
-                except Exception:
-                    remain = 0.0
-                # 0.03 c: ждём практически полной тишины в буфере,
-                # иначе хвост chime наезжает на голос.
-                if remain < 0.03:
-                    break
-                time.sleep(0.02)
-
-        else:
-            # Аппаратный выход не запущен (например, устройство не выбрано).
-            # Chime фактически не звучит в эфире, но паузу перед ответом
-            # выдерживаем, чтобы не было наложения сигнала и голоса.
-            try:
-                secs = float(self.engine.get_chime_seconds() or 0.0)
-            except Exception:
-                secs = 0.0
-            remain = secs - (time.time() - t0)
-            if remain > 0:
-                time.sleep(min(remain, 10.0))
+        if chime_secs > 0:
+            time.sleep(chime_secs)
+            print(f"[SIP] chime timer done: elapsed={time.time() - t_chime:.2f}s "
+                  f"(expect={chime_secs:.2f}s)")
+        # короткий хвост, чтобы последние сэмплы успели уйти в устройство
+        time.sleep(0.15)
 
         # 3) Небольшая пауза после сигнала: хвост затухания не должен
         #    накладываться на первые слова вызывающего.

@@ -502,14 +502,9 @@ class RadioOverlayEngine:
                 with self._lock:
                     self._chime_pos = min(len(chime), off + block)
 
-            deadline = time.time() + 3.0
-            while time.time() < deadline:
-                try:
-                    if self._hw_output.pending_duration() < 0.05:
-                        break
-                except Exception:
-                    break
-                time.sleep(0.02)
+            # Даём карте доиграть последний блок. pending_duration здесь
+            # бесполезен: после сигнала радио уже снова наполняет буфер.
+            time.sleep(0.15)
         finally:
             elapsed = time.perf_counter() - t_start
             logger.info("chime direct done: %.2f c", elapsed)
