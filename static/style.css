@@ -5865,3 +5865,16 @@ input[type="file"]::file-selector-button:hover {
 @media (max-width: 720px) {
     .transport-knob-group .about-knob-item { display: flex; }
 }
+
+/* Аппаратный выход: кнопки и выбор устройства друг над другом */
+.hw-output-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.hw-output-stack label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.hw-output-stack .btn { width: 100%; }

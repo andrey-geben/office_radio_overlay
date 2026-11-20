@@ -311,15 +311,13 @@
                         {% if role == 'admin' %}
                         <div class="output-panel">
                             <div class="output-panel-title">Аппаратный выход (сервер)</div>
-                            <div class="form-row">
+                            <div class="hw-output-stack">
+                                <button type="button" id="btn-refresh-hw-outputs" class="btn btn-refresh">🔄 Обновить</button>
                                 <label>Устройство воспроизведения
                                     <select id="hw-output-select"><option value="">Отключён</option></select>
                                 </label>
-                                <label>&nbsp;
-                                    <button type="button" id="btn-refresh-hw-outputs" class="btn btn-refresh">🔄 Обновить</button>
-                                </label>
+                                <button type="button" id="btn-apply-hw-output" class="btn btn-save">✅ Применить</button>
                             </div>
-                            <button type="button" id="btn-apply-hw-output" class="btn btn-save">✅ Применить</button>
                             <div class="hint">Используется для офисного усилителя, SIP/ЛСО, виртуального кабеля.</div>
                             <label class="hint" style="display:flex; gap:8px; align-items:center; margin-top:10px;">
                                 <input type="checkbox" id="chk-web-player-local">
@@ -335,7 +333,7 @@
         </div><!-- /.stack-system -->
 
         <footer class="footer">
-            © 2026 Andrey Geben · <a href="https://github.com/andrey-geben/office_radio_overlay" target="_blank">Office Radio Overlay</a> · MIT License · v1.5.2
+            © 2026 Andrey Geben · <a href="https://github.com/andrey-geben/office_radio_overlay" target="_blank">Office Radio Overlay</a> · MIT License · v1.5.3
         </footer>
     </main>
 
