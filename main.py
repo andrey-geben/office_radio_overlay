@@ -452,7 +452,7 @@ def api_about():
         except Exception:
             pass
     return jsonify({
-        "version": "1.2.0",
+        "version": "1.2.1",
         "author": "Andrey Geben",
         "github": "https://github.com/andrey-geben/office_radio_overlay",
         "license": "MIT",
@@ -772,6 +772,17 @@ def api_dtmf_test():
 
 
 # ==================== SIP ====================
+def _sip_common_settings(data):
+    """Общие настройки SIP из запроса: сигнал внимания и пауза перед ответом."""
+    chime_enabled = bool(data.get("sip_chime_enabled", True))
+    try:
+        answer_delay_ms = int(data.get("sip_answer_delay_ms", 400))
+    except (TypeError, ValueError):
+        answer_delay_ms = 400
+    answer_delay_ms = max(0, min(3000, answer_delay_ms))
+    return chime_enabled, answer_delay_ms
+
+
 @app.route("/api/sip/save", methods=["POST"])
 @admin_required
 def api_sip_save():
@@ -842,10 +853,15 @@ def api_sip_start():
     if not password:
         return jsonify({"ok": False, "error": "Введите пароль"}), 400
 
+    chime_enabled, answer_delay_ms = _sip_common_settings(data)
+
     settings_store.update(
         sip_domain=domain, sip_username=username, sip_password=password,
         sip_port=port, sip_transport=transport,
+        sip_chime_enabled=chime_enabled, sip_answer_delay_ms=answer_delay_ms,
     )
+    engine.update_settings(sip_chime_enabled=chime_enabled,
+                           sip_answer_delay_ms=answer_delay_ms)
 
     if sip_client is not None and sip_client.is_running():
         return jsonify({

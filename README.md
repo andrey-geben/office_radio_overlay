@@ -2,7 +2,7 @@
 
 > Система трансляции интернет-радио в офисе с автоматической вставкой служебных объявлений по управляющему субтону (CTCSS/DCS), поддержкой SIP-звонков (ЛСО), резервных источников и удалённого управления с любого ПК.
 
-[![Version](https://img.shields.io/badge/version-1.2.0-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.2.1-orange.svg)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/flask-3.0+-green.svg)](https://flask.palletsprojects.com/)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
@@ -67,7 +67,7 @@
 
 ### Вариант 1: готовый exe (Windows)
 
-1. Скачайте архив `OfficeRadioOverlay_v1.2.0_win64.zip` из [релизов](https://github.com/andrey-geben/office_radio_overlay/releases/latest).
+1. Скачайте архив `OfficeRadioOverlay_v1.2.1_win64.zip` из [релизов](https://github.com/andrey-geben/office_radio_overlay/releases/latest).
 2. Распакуйте в папку без кириллицы в пути (например, `C:\OfficeRadio\`).
 3. Запустите `OfficeRadioOverlay.exe`.
 4. Откройте панель: `http://<IP-сервера>:5000` (на сервере — `http://127.0.0.1:5000`).
