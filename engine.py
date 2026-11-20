@@ -408,6 +408,7 @@ class RadioOverlayEngine:
             # увидеть active=True при direct=False.
             self._chime_direct = True
             self._chime_active = True
+            self._chime_started_at = time.time()
             self._chime_call = call
             if self._ann_active:
                 self._ann_active = False
@@ -444,25 +445,33 @@ class RadioOverlayEngine:
             self._chime_pos = 0
             self._chime_call = None
             self._chime_direct = False
+            self._chime_started_at = 0.0
         if was_active:
             self._set_event("📞 Звонок отменён", force=True)
             self._update_state(output_type="idle", output_name=None, output_level_db=-90.0)
 
     def test_chime(self):
-        """Проигрывает chime без SIP. Возвращает dict {"ok", "error"}."""
+        """Проигрывает chime без SIP (тем же прямым путём, что и звонок)."""
         if not self._thread or not self._thread.is_alive():
             return {"ok": False, "error": "Движок не запущен. Запустите трансляцию."}
         chime = self._load_chime()
         if chime is None:
             return {"ok": False, "error": "Файл chime.wav не найден или повреждён."}
+        try:
+            hw_ready = self._hw_output.is_running()
+        except Exception:
+            hw_ready = False
+        if not hw_ready:
+            return {"ok": False, "error": "Аппаратный выход не запущен."}
         with self._lock:
             if self._chime_active:
                 return {"ok": False, "error": "Сигнал уже воспроизводится."}
             self._chime_data = chime
             self._chime_pos = 0
+            self._chime_direct = True
             self._chime_active = True
-            self._chime_direct = False
             self._chime_call = None
+            self._chime_started_at = time.time()
             if self._ann_active:
                 self._ann_active = False
                 self._ann_pos = 0
@@ -472,8 +481,10 @@ class RadioOverlayEngine:
             output_name="Тест сигнала",
             output_level_db=-90.0,
             output_pos=0.0,
-            output_total=round(len(chime) / 2 / config.SAMPLE_RATE, 2),
+            output_total=self.get_chime_seconds(),
         )
+        threading.Thread(target=self._feed_chime_direct, args=(chime,), daemon=True).start()
+        logger.info("Тест сигнала: запущен прямой проигрыш")
         return {"ok": True}
 
     def _feed_chime_direct(self, chime):
@@ -557,6 +568,7 @@ class RadioOverlayEngine:
             self._chime_pos = 0
             self._chime_call = None
             self._chime_direct = False
+            self._chime_started_at = 0.0
         self._update_state(last_event="streaming")
 
     # ==================== Публичное API ====================
@@ -1322,6 +1334,12 @@ class RadioOverlayEngine:
                 if self._chime_active:
                     # Пока звучит сигнал внимания, радио в карту не отдаём:
                     # сигнал играет отдельный поток, и наложения быть не должно.
+                    started = self._chime_started_at
+                    limit = self.get_chime_seconds() + 2.0
+                    if started and (time.time() - started) > limit:
+                        logger.warning("chime завис (%.1f c) — снимаю блокировку радио",
+                                       time.time() - started)
+                        self.cancel_chime()
                     continue
 
                 if self._sip_active:
