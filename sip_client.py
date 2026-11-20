@@ -215,6 +215,12 @@ class SipClient:
             with self._lock:
                 self._running = False
 
+    _STDERR_IMPORTANT = (
+        "error", "Error", "ERROR", "fail", "Fail", "FAIL",
+        "status=4", "status=5", "unregistration success",
+        "[CONFIRMED]", "[DISCONNECTED]", "Registration failed",
+    )
+
     def _read_stderr(self):
         with self._lock:
             proc = self._proc
@@ -223,7 +229,10 @@ class SipClient:
         try:
             for line in proc.stderr:
                 line = line.rstrip()
-                if line:
+                if not line:
+                    continue
+                # PJSIP сыпет статистикой каждого звонка — в консоль только важное
+                if any(k in line for k in self._STDERR_IMPORTANT):
                     print(line)
         except Exception:
             pass

@@ -226,9 +226,12 @@ def cmd_init(msg):
     ep.libStart()
 
     # Список устройств для диагностики
-    log("devices:")
-    for idx, name, in_c, out_c in _list_devices(ep):
-        log(f"  dev_id={idx} '{name}' in={in_c} out={out_c}")
+    all_devs = _list_devices(ep)
+    outs = [(i, n, ic, oc) for i, n, ic, oc in all_devs if oc > 0]
+    log(f"devices: {len(all_devs)} (output: {len(outs)})")
+    if os.environ.get("SIP_DEBUG_DEVICES") == "1":
+        for idx, name, in_c, out_c in all_devs:
+            log(f"  dev_id={idx} '{name}' in={in_c} out={out_c}")
 
     # Выбор playback: явно заданный dev_id -> CABLE In -> VoiceMeeter Aux
     target = None

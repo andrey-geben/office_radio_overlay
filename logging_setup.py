@@ -4,6 +4,7 @@ import sys
 import logging
 import logging.handlers
 import threading
+import re
 
 if getattr(sys, "frozen", False):
     BASE_DIR = os.path.dirname(sys.executable)
@@ -14,6 +15,39 @@ LOG_FILE = os.path.join(LOGS_DIR, "app.log")
 
 _initialized = False
 _lock = threading.Lock()
+
+
+# Что показываем в консоли (файл получает всё).
+_CONSOLE_RE = re.compile(
+    r"(\[boot\]|Логирование инициализировано|Автозапуск|OutputStream открыт"
+    r"|FFmpeg\] Запуск|Клиент запущен|Регистрация:|Account created"
+    r"|SIP mode:|Режим SIP|chime|Chime|Звонок|Входящий|Тест сигнала"
+    r"|СИГНАЛ|сработк|Объявление|DTMF|Запуск трансляции|Остановка|СТОП"
+    r"|Источник|источник|preflight|Preflight|завис|ОШИБКА|Не удалось)",
+    re.IGNORECASE,
+)
+
+
+class ConsoleFilter(logging.Filter):
+    """Пропускает в консоль только важное: ошибки, запуски, звонки, сработки."""
+
+    def filter(self, record):
+        if os.environ.get("CONSOLE_VERBOSE") == "1":
+            return True
+        if record.levelno >= logging.WARNING:
+            return True
+        # служебный шум Flask/werkzeug — только в файл, кроме запуска сервера
+        if record.name.startswith("werkzeug"):
+            try:
+                msg = record.getMessage()
+            except Exception:
+                return False
+            return ("Running on" in msg) or ("Press CTRL" in msg)
+        try:
+            msg = record.getMessage()
+        except Exception:
+            return False
+        return bool(_CONSOLE_RE.search(msg))
 
 
 def setup_logging(level=logging.INFO):
@@ -54,7 +88,8 @@ def setup_logging(level=logging.INFO):
     # 2) Консоль (для отладки в PyCharm / терминале)
     console = logging.StreamHandler(sys.stdout)
     console.setFormatter(fmt)
-    console.setLevel(level)
+    console.setLevel(logging.INFO)
+    console.addFilter(ConsoleFilter())
     root.addHandler(console)
 
     # 3) Перехват необработанных исключений
