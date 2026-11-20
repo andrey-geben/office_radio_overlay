@@ -1811,23 +1811,34 @@ async function refreshPgsStatus() {
         const data = await r.json();
         const pgsEnabled = data.enabled !== false;
         if ($('pgs_enabled')) $('pgs_enabled').checked = pgsEnabled;
-        if ($('pgs-disabled-hint')) $('pgs-disabled-hint').style.display = pgsEnabled ? 'none' : '';
+        // Включён — панель настроек сворачивается, остаются заголовок и галочка.
+        if ($('pgs-settings')) $('pgs-settings').style.display = pgsEnabled ? 'none' : '';
+        if ($('pgs-enabled-hint')) $('pgs-enabled-hint').style.display = pgsEnabled ? '' : 'none';
         if ($('pgs-status')) {
             $('pgs-status').textContent = !pgsEnabled
                 ? '⏸ выключен галочкой'
                 : (data.running ? '✅ подключён' : '⏹ отключён');
         }
-        ['pgs_domain', 'pgs_username', 'pgs_password', 'pgs_port', 'pgs_transport',
-         'auto_start_pgs', 'btn-pgs-save', 'btn-pgs-start'].forEach((id) => {
-            if ($(id)) $(id).disabled = !pgsEnabled;
-        });
+        if ($('pgs-status-badge')) {
+            if (!pgsEnabled) {
+                $('pgs-status-badge').textContent = '⏸ выключен';
+            } else if (data.engine_sip_active && data.engine_sip_kind === 'pgs') {
+                $('pgs-status-badge').textContent = '📞 ПГС в эфире';
+            } else if (data.running) {
+                $('pgs-status-badge').textContent = '✅ подключён';
+            } else {
+                $('pgs-status-badge').textContent = '⏹ нет связи';
+            }
+        }
+        if ($('btn-pgs-start')) $('btn-pgs-start').disabled = !pgsEnabled;
+        if ($('btn-pgs-save')) $('btn-pgs-save').disabled = false;
         if ($('pgs-engine')) {
             $('pgs-engine').textContent = data.engine_sip_active
                 ? (data.engine_sip_kind === 'pgs' ? '📞 ПГС в эфире' : '📞 ЛСО в эфире')
                 : '—';
         }
         if ($('btn-pgs-start')) $('btn-pgs-start').disabled = data.running;
-        if ($('btn-pgs-stop')) $('btn-pgs-stop').disabled = !pgsEnabled || !data.running;
+        if ($('btn-pgs-stop')) $('btn-pgs-stop').disabled = !data.running;
         if (!pgsInitialized) {
             $('pgs_domain').value = data.sip_domain || '';
             $('pgs_username').value = data.sip_username || '';
@@ -1885,11 +1896,39 @@ function bindPgs() {
     };
     if ($('pgs_enabled')) {
         $('pgs_enabled').onchange = async (e) => {
+            const enabled = e.target.checked;
             await fetch('/api/sip/pgs/enable', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ enabled: e.target.checked }),
+                body: JSON.stringify({ enabled }),
             });
+            if (enabled) {
+                const msg = $('pgs-message');
+                try {
+                    const r = await fetch('/api/sip/pgs/start', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(_pgsPayload()),
+                    });
+                    const data = await r.json();
+                    if (!data.ok) {
+                        msg.textContent = '❌ ' + (data.error || 'не удалось подключить ПГС');
+                        // Нет настроек — возвращаем панель, чтобы их заполнить
+                        if (/заполните|пароль|домен/i.test(data.error || '')) {
+                            await fetch('/api/sip/pgs/enable', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ enabled: false }),
+                            });
+                        }
+                    } else {
+                        msg.textContent = '✅ ПГС подключён';
+                    }
+                } catch (err) {
+                    msg.textContent = '❌ ' + err.message;
+                }
+                setTimeout(() => msg.textContent = '', 5000);
+            }
             refreshPgsStatus();
         };
     }

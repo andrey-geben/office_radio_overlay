@@ -320,7 +320,7 @@
         </div><!-- /.stack-system -->
 
         <footer class="footer">
-            © 2026 Andrey Geben · <a href="https://github.com/andrey-geben/office_radio_overlay" target="_blank">Office Radio Overlay</a> · MIT License · v1.4.2
+            © 2026 Andrey Geben · <a href="https://github.com/andrey-geben/office_radio_overlay" target="_blank">Office Radio Overlay</a> · MIT License · v1.4.3
         </footer>
     </main>
 
@@ -685,42 +685,48 @@
         <span id="sip-message" class="upload-status"></span>
 
         <h3 style="margin-top:22px;">2. ПГС — производственные сообщения</h3>
-        <label class="checkbox-row" style="margin-bottom:8px;">
-            <input type="checkbox" id="pgs_enabled" checked>
-            Включить ПГС (второй SIP-клиент)
-        </label>
-        <div class="hint" id="pgs-disabled-hint" style="display:none; margin-bottom:8px;">
-            ПГС выключен галочкой: клиент не запускается, автозапуск игнорируется.
-        </div>
-        <div class="hint" style="margin-bottom:8px;">
-            Приоритет ниже: во время ЛСО или сигнала внимания звонок отклоняется.
-            Кто может дозвониться — определяется на АТС, списки в приложении не ведутся.
-        </div>
-        <div class="form-row">
-            <label>SIP-домен ПГС <input type="text" id="pgs_domain" placeholder="sip.example.com"></label>
-            <label>Логин ПГС <input type="text" id="pgs_username" placeholder="pgs_radio"></label>
-        </div>
-        <div class="form-row">
-            <label>Пароль ПГС <input type="password" id="pgs_password" placeholder="Введите пароль"></label>
-            <label>Порт ПГС <input type="number" id="pgs_port" value="5060" min="1" max="65535"></label>
-        </div>
-        <div class="form-row">
-            <label>Транспорт ПГС
-                <select id="pgs_transport"><option value="udp">UDP</option><option value="tcp">TCP</option></select>
+        <div class="form-row" style="align-items:center; margin-bottom:6px;">
+            <label class="checkbox-row">
+                <input type="checkbox" id="pgs_enabled" checked>
+                Включить ПГС (второй SIP-клиент)
             </label>
-            <label class="checkbox-row" style="align-self:end; margin-bottom:8px;">
-                <input type="checkbox" id="auto_start_pgs">
-                Автозапускать ПГС
-            </label>
+            <span id="pgs-status-badge" class="value" style="align-self:center;">—</span>
         </div>
-        <div class="buttons">
-            <button type="button" id="btn-pgs-save" class="btn btn-save">💾 Сохранить ПГС</button>
-            <button type="button" id="btn-pgs-start" class="btn btn-start">▶ Подключить ПГС</button>
-            <button type="button" id="btn-pgs-stop" class="btn btn-stop">■ Отключить ПГС</button>
+        <div class="hint" id="pgs-enabled-hint" style="display:none; margin-bottom:8px;">
+            ПГС включён, настройки скрыты. Чтобы изменить параметры — снимите галочку.
         </div>
-        <div class="status-grid" style="margin-top:12px;">
-            <div><span class="label">Статус ПГС:</span><span id="pgs-status" class="value">—</span></div>
-            <div><span class="label">Режим звонка:</span><span id="pgs-engine" class="value">—</span></div>
+
+        <div id="pgs-settings">
+            <div class="hint" style="margin-bottom:8px;">
+                Приоритет ниже: во время ЛСО или сигнала внимания звонок отклоняется.
+                Кто может дозвониться — определяется на АТС, списки в приложении не ведутся.
+            </div>
+            <div class="form-row">
+                <label>SIP-домен ПГС <input type="text" id="pgs_domain" placeholder="sip.example.com"></label>
+                <label>Логин ПГС <input type="text" id="pgs_username" placeholder="pgs_radio"></label>
+            </div>
+            <div class="form-row">
+                <label>Пароль ПГС <input type="password" id="pgs_password" placeholder="Введите пароль"></label>
+                <label>Порт ПГС <input type="number" id="pgs_port" value="5060" min="1" max="65535"></label>
+            </div>
+            <div class="form-row">
+                <label>Транспорт ПГС
+                    <select id="pgs_transport"><option value="udp">UDP</option><option value="tcp">TCP</option></select>
+                </label>
+                <label class="checkbox-row" style="align-self:end; margin-bottom:8px;">
+                    <input type="checkbox" id="auto_start_pgs">
+                    Автозапускать ПГС
+                </label>
+            </div>
+            <div class="buttons">
+                <button type="button" id="btn-pgs-save" class="btn btn-save">💾 Сохранить ПГС</button>
+                <button type="button" id="btn-pgs-start" class="btn btn-start">▶ Подключить ПГС</button>
+                <button type="button" id="btn-pgs-stop" class="btn btn-stop">■ Отключить ПГС</button>
+            </div>
+            <div class="status-grid" style="margin-top:12px;">
+                <div><span class="label">Статус ПГС:</span><span id="pgs-status" class="value">—</span></div>
+                <div><span class="label">Режим звонка:</span><span id="pgs-engine" class="value">—</span></div>
+            </div>
         </div>
         <span id="pgs-message" class="upload-status"></span>
 
