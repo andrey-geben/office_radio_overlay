@@ -129,6 +129,25 @@ class TwoSipClientsTest(unittest.TestCase):
         main.engine.exit_sip_mode()
         self.assertIsNone(main.engine.get_sip_kind())
 
+
+    def test_foreign_call_ended_ignored(self):
+        from sip_client import SipClient
+
+        class Eng:
+            def __init__(self):
+                self.kind = "lso"
+                self.exited = 0
+                self.cancelled = 0
+            def get_sip_kind(self): return self.kind
+            def exit_sip_mode(self): self.exited += 1
+            def cancel_chime(self): self.cancelled += 1
+
+        eng = Eng()
+        pgs = SipClient(eng, "d", "u", "p", kind="pgs")
+        pgs._handle_event({"event": "call_ended", "reason": "Normal"})
+        self.assertEqual(eng.exited, 0)
+        self.assertEqual(eng.cancelled, 0)
+
     def test_pgs_low_priority(self):
         from sip_client import SipClient
 

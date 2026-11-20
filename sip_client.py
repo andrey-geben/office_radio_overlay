@@ -265,7 +265,14 @@ class SipClient:
             ).start()
 
         elif ev == "call_confirmed":
-            print("[SIP] Звонок подтверждён.")
+            print(f"[SIP:{self.title}] Звонок подтверждён.")
+            try:
+                owner = self.engine.get_sip_kind()
+            except Exception:
+                owner = None
+            if owner is not None and owner != self.kind:
+                print(f"[SIP:{self.title}] Уже активен {owner} — не переключаем режим")
+                return
             try:
                 self.engine.enter_sip_mode(self.kind)
             except Exception as e:
@@ -273,7 +280,16 @@ class SipClient:
 
         elif ev == "call_ended":
             reason = msg.get("reason", "unknown")
-            print(f"[SIP] Звонок завершён (reason: {reason}).")
+            # Завершение «чужого» звонка не должно сбрасывать режим другого клиента:
+            # иначе радио возвращается поверх активного ЛСО/ПГС.
+            try:
+                owner = self.engine.get_sip_kind()
+            except Exception:
+                owner = None
+            print(f"[SIP:{self.title}] Звонок завершён (reason: {reason}, owner={owner}).")
+            if owner is not None and owner != self.kind:
+                print(f"[SIP:{self.title}] Это не наш звонок (активен {owner}) — состояние не трогаем")
+                return
             try:
                 self.engine.cancel_chime()
             except Exception:

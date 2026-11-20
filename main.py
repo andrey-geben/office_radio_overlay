@@ -455,6 +455,7 @@ def api_debug_audio():
         pass
     return jsonify({
         "sip_active": bool(st.get("sip_active")),
+        "sip_kind": engine.get_sip_kind(),
         "chime_active": engine.is_chime_active(),
         "chime_state": engine.get_chime_state(),
         "chime_seconds": engine.get_chime_seconds(),
@@ -513,7 +514,7 @@ def api_about():
         except Exception:
             pass
     return jsonify({
-        "version": "1.4.0",
+        "version": "1.4.1",
         "author": "Andrey Geben",
         "github": "https://github.com/andrey-geben/office_radio_overlay",
         "license": "MIT",
