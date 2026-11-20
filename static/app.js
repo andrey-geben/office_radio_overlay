@@ -1813,7 +1813,17 @@ async function refreshPgsStatus() {
         if ($('pgs_enabled')) $('pgs_enabled').checked = pgsEnabled;
         // Включён — панель настроек сворачивается, остаются заголовок и галочка.
         if ($('pgs-settings')) $('pgs-settings').style.display = pgsEnabled ? 'none' : '';
-        if ($('pgs-enabled-hint')) $('pgs-enabled-hint').style.display = pgsEnabled ? '' : 'none';
+        if ($('pgs-enabled-hint')) {
+            $('pgs-enabled-hint').style.display = pgsEnabled ? '' : 'none';
+            $('pgs-enabled-hint').textContent = pgsEnabled
+                ? (data.sip_domain && data.sip_username && data.sip_password_set
+                    ? 'ПГС включён, настройки скрыты. Чтобы изменить параметры — снимите галочку.'
+                    : 'ПГС включён, но не настроен: снимите галочку и заполните домен, логин и пароль.')
+                : '';
+        }
+        if ($('btn-pgs-quickstart')) {
+            $('btn-pgs-quickstart').style.display = (pgsEnabled && !data.running) ? '' : 'none';
+        }
         if ($('pgs-status')) {
             $('pgs-status').textContent = !pgsEnabled
                 ? '⏸ выключен галочкой'
@@ -1902,34 +1912,24 @@ function bindPgs() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ enabled }),
             });
-            if (enabled) {
-                const msg = $('pgs-message');
-                try {
-                    const r = await fetch('/api/sip/pgs/start', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(_pgsPayload()),
-                    });
-                    const data = await r.json();
-                    if (!data.ok) {
-                        msg.textContent = '❌ ' + (data.error || 'не удалось подключить ПГС');
-                        // Нет настроек — возвращаем панель, чтобы их заполнить
-                        if (/заполните|пароль|домен/i.test(data.error || '')) {
-                            await fetch('/api/sip/pgs/enable', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ enabled: false }),
-                            });
-                        }
-                    } else {
-                        msg.textContent = '✅ ПГС подключён';
-                    }
-                } catch (err) {
-                    msg.textContent = '❌ ' + err.message;
-                }
-                setTimeout(() => msg.textContent = '', 5000);
-            }
             refreshPgsStatus();
+        };
+    }
+    if ($('btn-pgs-quickstart')) {
+        $('btn-pgs-quickstart').onclick = async () => {
+            const msg = $('pgs-message');
+            msg.textContent = '⏳ Подключение...';
+            try {
+                const r = await fetch('/api/sip/pgs/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(_pgsPayload()),
+                });
+                const data = await r.json();
+                msg.textContent = data.ok ? '✅ ПГС подключён' : '❌ ' + (data.error || 'ошибка');
+            } catch (e) { msg.textContent = '❌ ' + e.message; }
+            refreshPgsStatus();
+            setTimeout(() => msg.textContent = '', 5000);
         };
     }
     if ($('auto_start_pgs')) {

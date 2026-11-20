@@ -516,7 +516,7 @@ def api_about():
         except Exception:
             pass
     return jsonify({
-        "version": "1.4.4",
+        "version": "1.4.5",
         "author": "Andrey Geben",
         "github": "https://github.com/andrey-geben/office_radio_overlay",
         "license": "MIT",
