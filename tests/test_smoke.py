@@ -71,5 +71,21 @@ class OutputFanoutTest(unittest.TestCase):
             engine.unsubscribe_output(b)
 
 
+
+
+class ChimeImplementationTest(unittest.TestCase):
+    def test_direct_chime_method_exists(self):
+        """Регресс: вызов _feed_chime_direct без реализации ронял SIP (486)."""
+        self.assertTrue(hasattr(main.engine, "_feed_chime_direct"))
+
+    def test_chime_seconds_formula(self):
+        data = main.engine._load_chime()
+        if not data:
+            self.skipTest("chime.wav отсутствует")
+        import config
+        expected = len(data) / 2.0 / config.CHANNELS / config.SAMPLE_RATE
+        self.assertAlmostEqual(main.engine.get_chime_seconds(), expected, places=3)
+
+
 if __name__ == "__main__":
     unittest.main()

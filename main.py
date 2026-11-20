@@ -54,6 +54,7 @@ app.secret_key = config.SECRET_KEY
 app.permanent_session_lifetime = timedelta(hours=config.SESSION_LIFETIME_HOURS)
 
 engine = RadioOverlayEngine()
+print(f"[boot] direct chime: {hasattr(engine, '_feed_chime_direct')}")
 sip_client = None
 
 users_store.ensure_default_admin()
@@ -452,7 +453,7 @@ def api_about():
         except Exception:
             pass
     return jsonify({
-        "version": "1.2.3",
+        "version": "1.2.4",
         "author": "Andrey Geben",
         "github": "https://github.com/andrey-geben/office_radio_overlay",
         "license": "MIT",

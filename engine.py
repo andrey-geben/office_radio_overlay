@@ -413,7 +413,15 @@ class RadioOverlayEngine:
                 self._ann_active = False
                 self._ann_pos = 0
 
-        threading.Thread(target=self._feed_chime_direct, args=(chime,), daemon=True).start()
+        feeder = getattr(self, "_feed_chime_direct", None)
+        if feeder is None:
+            # Смешанный/старый билд: откатываемся к микшированию в потоке,
+            # чтобы не отклонять звонок из-за отсутствующего метода.
+            logger.warning("Нет _feed_chime_direct — chime пойдёт через поток")
+            with self._lock:
+                self._chime_direct = False
+        else:
+            threading.Thread(target=feeder, args=(chime,), daemon=True).start()
 
         self._set_event("🔔 Входящий звонок — сигнал внимания", force=True)
         self._update_state(
@@ -465,6 +473,34 @@ class RadioOverlayEngine:
             output_total=round(len(chime) / 2 / config.SAMPLE_RATE, 2),
         )
         return {"ok": True}
+
+    def _feed_chime_direct(self, chime):
+        """Подаёт chime прямо в звуковую карту с реальным темпом."""
+        block = config.BLOCK_SIZE * config.CHANNELS * 2
+        block_sec = config.BLOCK_SIZE / float(config.SAMPLE_RATE)
+        try:
+            for off in range(0, len(chime), block):
+                with self._lock:
+                    if not self._chime_active or not self._chime_direct:
+                        return
+                self._hw_output.push(chime[off:off + block])
+                with self._lock:
+                    self._chime_pos = min(len(chime), off + block)
+                time.sleep(block_sec)
+
+            deadline = time.time() + 3.0
+            while time.time() < deadline:
+                try:
+                    if self._hw_output.pending_duration() < 0.05:
+                        break
+                except Exception:
+                    break
+                time.sleep(0.02)
+        finally:
+            with self._lock:
+                still = self._chime_active and self._chime_direct
+            if still:
+                self._finish_chime()
 
     def _play_chime_chunk(self, radio_chunk):
         with self._lock:
