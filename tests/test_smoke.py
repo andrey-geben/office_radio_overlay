@@ -87,5 +87,25 @@ class ChimeImplementationTest(unittest.TestCase):
         self.assertAlmostEqual(main.engine.get_chime_seconds(), expected, places=3)
 
 
+
+
+class ChimeLibraryTest(unittest.TestCase):
+    def test_list_and_select(self):
+        main.app.config["TESTING"] = True
+        with main.app.test_client() as c:
+            with c.session_transaction() as s:
+                s["logged_in"] = True
+                s["username"] = "admin"
+                s["role"] = "admin"
+            items = c.get("/api/chimes").get_json()["items"]
+            self.assertTrue(items)
+            first = items[0]["file"]
+            r = c.post("/api/chimes/select", json={"file": first})
+            self.assertEqual(r.status_code, 200)
+            self.assertTrue(r.get_json()["ok"])
+            main.engine._load_chime()
+            self.assertGreater(main.engine.get_chime_seconds(), 0.1)
+
+
 if __name__ == "__main__":
     unittest.main()

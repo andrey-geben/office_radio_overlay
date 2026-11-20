@@ -1786,6 +1786,80 @@ function bindSetupWizard() {
     };
 }
 
+
+// ==================== Библиотека сигналов внимания ====================
+async function loadChimeList() {
+    const sel = $("chime-select");
+    if (!sel) return;
+    try {
+        const r = await fetch("/api/chimes");
+        const data = await r.json();
+        const items = data.items || [];
+        sel.innerHTML = "";
+        for (const it of items) {
+            const o = document.createElement("option");
+            o.value = it.file;
+            o.textContent = `${it.name} — ${Number(it.seconds).toFixed(2)} c`;
+            o.selected = !!it.active;
+            sel.appendChild(o);
+        }
+        const hint = $("chime-hint");
+        const active = items.find((i) => i.active);
+        if (hint) {
+            hint.textContent = active
+                ? `Активный: ${active.name}, ${active.seconds} c. Ответ SIP ждётся на эту длительность + пауза.`
+                : "Библиотека сигналов пуста.";
+        }
+    } catch (e) { console.error(e); }
+}
+
+async function selectChime(file) {
+    try {
+        const r = await fetch("/api/chimes/select", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ file }),
+        });
+        const data = await r.json();
+        if (!data.ok) showToast(data.error || "Не удалось выбрать сигнал", true);
+        else showToast("Сигнал выбран", false);
+    } catch (e) { showToast("Ошибка: " + e.message, true); }
+    loadChimeList();
+}
+
+function bindChimeLibrary() {
+    const sel = $("chime-select");
+    if (!sel) return;
+    sel.onchange = () => selectChime(sel.value);
+    const btn = $("btn-chime-upload");
+    const inp = $("chime-file-input");
+    if (btn && inp) {
+        btn.onclick = () => inp.click();
+        inp.onchange = async () => {
+            const f = inp.files && inp.files[0];
+            if (!f) return;
+            btn.disabled = true;
+            btn.textContent = "⏳ Обработка...";
+            try {
+                const fd = new FormData();
+                fd.append("file", f);
+                const r = await fetch("/api/chimes/upload", { method: "POST", body: fd });
+                const data = await r.json();
+                if (!data.ok) showToast(data.error || "Не удалось загрузить", true);
+                else showToast(`Загружен: ${data.item.name}`, false);
+            } catch (e) {
+                showToast("Ошибка: " + e.message, true);
+            } finally {
+                inp.value = "";
+                btn.disabled = false;
+                btn.textContent = "📁 Загрузить свой сигнал";
+                loadChimeList();
+            }
+        };
+    }
+    loadChimeList();
+}
+
 function bindWebPlayerLocalToggle() {
     const chk = $("chk-web-player-local");
     if (!chk) return;
@@ -1957,3 +2031,5 @@ bindSetupWizard();
 bindWebPlayerLocalToggle();
 
 initEqToggle();
+
+bindChimeLibrary();

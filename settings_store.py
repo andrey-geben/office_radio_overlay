@@ -48,6 +48,7 @@ def _defaults():
         "sip_port": 5060,
         "sip_transport": "udp",
         "sip_chime_enabled": config.SIP_CHIME_ENABLED_DEFAULT,
+        "chime_file": "chime.wav",
         "sip_answer_delay_ms": getattr(config, "SIP_ANSWER_DELAY_MS", 400),
         # --- Автозапуск ---
         "auto_start_engine": False,

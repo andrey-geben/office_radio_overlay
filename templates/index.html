@@ -320,7 +320,7 @@
         </div><!-- /.stack-system -->
 
         <footer class="footer">
-            © 2026 Andrey Geben · <a href="https://github.com/andrey-geben/office_radio_overlay" target="_blank">Office Radio Overlay</a> · MIT License · v1.2.9
+            © 2026 Andrey Geben · <a href="https://github.com/andrey-geben/office_radio_overlay" target="_blank">Office Radio Overlay</a> · MIT License · v1.3.0
         </footer>
     </main>
 
@@ -686,6 +686,17 @@
                 </button>
             </label>
         </div>
+        <div class="form-row">
+            <label>Сигнал внимания
+                <select id="chime-select"></select>
+            </label>
+            <label>&nbsp;
+                <button type="button" id="btn-chime-upload" class="btn btn-scan" style="width:100%;">📁 Загрузить свой сигнал</button>
+                <input type="file" id="chime-file-input" accept=".wav,.mp3,.ogg,.flac,.m4a" style="display:none">
+            </label>
+        </div>
+        <div class="hint" id="chime-hint" style="margin-bottom:8px;">—</div>
+
         <div class="hint" style="margin-bottom:12px;">
             При входящем звонке радио плавно затухает, играет «плим-блим», затем выдерживается пауза (чтобы хвост сигнала не наложился на голос), и только после этого SIP-звонок соединяется.
             Тест играет сигнал прямо сейчас — убедитесь, что радио/объявление приостановится.

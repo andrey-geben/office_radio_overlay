@@ -31,6 +31,7 @@ from audio_output import HardwareOutput
 from auth import login_required, admin_required
 import announcement_store
 import settings_store
+import chime_store
 import users_store
 import config
 
@@ -477,7 +478,7 @@ def api_about():
         except Exception:
             pass
     return jsonify({
-        "version": "1.2.9",
+        "version": "1.3.0",
         "author": "Andrey Geben",
         "github": "https://github.com/andrey-geben/office_radio_overlay",
         "license": "MIT",
@@ -957,6 +958,49 @@ def api_sip_status():
         "sip_chime_enabled": saved.get("sip_chime_enabled", True),
         "sip_answer_delay_ms": saved.get("sip_answer_delay_ms", 400),
     })
+
+
+@app.route("/api/chimes", methods=["GET"])
+@admin_required
+def api_chimes():
+    return jsonify({"items": chime_store.list_chimes()})
+
+
+@app.route("/api/chimes/select", methods=["POST"])
+@admin_required
+def api_chimes_select():
+    data = request.get_json(silent=True) or {}
+    ok, err = chime_store.select((data.get("file") or "").strip())
+    if not ok:
+        return jsonify({"ok": False, "error": err}), 400
+    engine.reload_chime()
+    app.logger.info("chime: выбран %s", data.get("file"))
+    return jsonify({"ok": True, "items": chime_store.list_chimes()})
+
+
+@app.route("/api/chimes/upload", methods=["POST"])
+@admin_required
+def api_chimes_upload():
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "error": "Файл не выбран"}), 400
+    item, err = chime_store.add_from_file(f.filename, f)
+    if not item:
+        return jsonify({"ok": False, "error": err}), 400
+    chime_store.select(item["file"])
+    engine.reload_chime()
+    app.logger.info("chime: загружен %s", item["file"])
+    return jsonify({"ok": True, "item": item, "items": chime_store.list_chimes()})
+
+
+@app.route("/api/chimes/<name>", methods=["DELETE"])
+@admin_required
+def api_chimes_delete(name):
+    ok, err = chime_store.delete(name)
+    if not ok:
+        return jsonify({"ok": False, "error": err}), 400
+    engine.reload_chime()
+    return jsonify({"ok": True, "items": chime_store.list_chimes()})
 
 
 @app.route("/api/sip/test-chime", methods=["POST"])

@@ -17,6 +17,7 @@ from mixer import load_announcement
 from audio_output import HardwareOutput
 import announcement_store
 import settings_store
+import chime_store
 import config
 
 logger = logging.getLogger(__name__)
@@ -333,14 +334,24 @@ class RadioOverlayEngine:
 
     # ==================== Chime ====================
 
-    def _load_chime(self):
-        """Загружает chime-файл (WAV -> PCM bytes). Кэширует."""
+    def reload_chime(self):
+        """Сбрасывает кэш сигнала (после выбора/загрузки нового)."""
         with self._lock:
-            if self._chime_data is not None:
+            self._chime_data = None
+            self._chime_path = None
+        logger.info("chime: кэш сигнала сброшен")
+
+    def _load_chime(self):
+        """Загружает выбранный в библиотеке chime (WAV -> PCM bytes)."""
+        try:
+            path = chime_store.active_file()
+        except Exception:
+            path = config.SIP_CHIME_FILE
+            if not os.path.isabs(path):
+                path = os.path.join(settings_store.BASE_DIR, path)
+        with self._lock:
+            if self._chime_data is not None and self._chime_path == path:
                 return self._chime_data
-        path = config.SIP_CHIME_FILE
-        if not os.path.isabs(path):
-            path = os.path.join(settings_store.BASE_DIR, path)
         if not os.path.exists(path):
             logger.warning(f"Chime file not found: {path}")
             return None
@@ -360,6 +371,7 @@ class RadioOverlayEngine:
                 data = audio.raw_data
             with self._lock:
                 self._chime_data = data
+                self._chime_path = path
             return data
         except Exception as e:
             logger.error(f"Failed to load chime: {e}")
