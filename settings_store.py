@@ -20,6 +20,7 @@ def _defaults():
         # --- Аудио / движок ---
         "source_type": config.SOURCE_TYPE,
         "radio_url": config.RADIO_STREAM_URL,
+        "main_source_name": "",
         "input_device": config.INPUT_DEVICE,
         "tone_freq": config.CTCSS_TONE_FREQ,
         "detection_threshold": config.DETECTION_THRESHOLD,

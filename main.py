@@ -516,7 +516,7 @@ def api_about():
         except Exception:
             pass
     return jsonify({
-        "version": "1.5.0",
+        "version": "1.5.1",
         "author": "Andrey Geben",
         "github": "https://github.com/andrey-geben/office_radio_overlay",
         "license": "MIT",
@@ -666,6 +666,8 @@ def api_settings():
             filtered[k] = bool(v)
         elif k == "radio_url" and isinstance(v, str):
             filtered[k] = v
+        elif k == "main_source_name" and isinstance(v, str):
+            filtered[k] = v.strip()
         elif k == "source_type" and v in ("stream", "device"):
             filtered[k] = v
         elif k == "input_device":

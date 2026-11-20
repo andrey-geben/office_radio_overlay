@@ -418,6 +418,7 @@ function updateSourceUI(s) {
     $('source-stream').style.display = type === 'device' ? 'none' : '';
     $('source-device').style.display = type === 'device' ? '' : 'none';
     $('source-url').value = s.radio_url || '';
+        if ($('source-name')) $('source-name').value = s.main_source_name || '';
     const sel = $('source-device-select');
     if (sel) sel.value = s.input_device != null ? String(s.input_device) : '';
 }
@@ -1278,6 +1279,7 @@ if (IS_ADMIN) {
                 body: JSON.stringify({
                     source_type: type,
                     radio_url: url,
+                    main_source_name: ($('source-name') || {}).value ? $('source-name').value.trim() : '',
                     input_device: dv === '' ? null : parseInt(dv)
                 }),
             });

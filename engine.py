@@ -206,6 +206,7 @@ class RadioOverlayEngine:
         self._settings = {
             "source_type": saved.get("source_type", config.SOURCE_TYPE),
             "radio_url": saved.get("radio_url", config.RADIO_STREAM_URL),
+            "main_source_name": saved.get("main_source_name", ""),
             "input_device": saved.get("input_device", config.INPUT_DEVICE),
             "tone_freq": saved.get("tone_freq", config.CTCSS_TONE_FREQ),
             "detection_threshold": saved.get("detection_threshold", config.DETECTION_THRESHOLD),
@@ -1272,13 +1273,21 @@ class RadioOverlayEngine:
         self._update_state(cpu_percent=round(cpu, 1), network_bps=net_bps)
 
     # ==================== Менеджер источников ====================
+    def _main_channel_name(self, s=None):
+        s = s or self.get_settings()
+        # Устройство захвата — всегда «Основной». Для потока берём заданное имя.
+        if s.get("source_type") == "device":
+            return "Основной"
+        name = (s.get("main_source_name") or "").strip()
+        return name or "Основной поток"
+
     def get_channels(self):
         """Список каналов: основной + резервные (с названиями)."""
         s = self.get_settings()
         items = []
         main = (s.get("radio_url") or "").strip()
         if main:
-            items.append({"index": 0, "name": "Основной", "url": main, "is_main": True})
+            items.append({"index": 0, "name": self._main_channel_name(s), "url": main, "is_main": True})
         for r in (s.get("fallback_sources") or []):
             url = (r.get("url") or "").strip()
             if not url:
@@ -1317,7 +1326,7 @@ class RadioOverlayEngine:
         s = self.get_settings()
 
         if s["source_type"] == "device":
-            self._update_state(current_source="Устройство", using_reserve=False)
+            self._update_state(current_source="Основной", using_reserve=False)
             while not self._stop_event.is_set():
                 try:
                     from audio_capture import stream_from_device
@@ -1354,7 +1363,7 @@ class RadioOverlayEngine:
         with self._lock:
             manual_on = self._manual_channel is not None
         reserves = s.get("fallback_sources", []) if (fallback_enabled or manual_on) else []
-        sources = [{"name": "Основной", "url": main_url, "is_main": True}]
+        sources = [{"name": self._main_channel_name(s), "url": main_url, "is_main": True}]
         for i, r in enumerate(reserves):
             url = (r.get("url") or "").strip()
             if not url:
@@ -1363,7 +1372,7 @@ class RadioOverlayEngine:
 
         # --- Один источник: бесконечное переподключение ---
         if len(sources) == 1:
-            self._update_state(current_source="Основной", using_reserve=False)
+            self._update_state(current_source=self._main_channel_name(s), using_reserve=False)
             while not self._stop_event.is_set():
                 try:
                     for chunk in stream_audio_chunks(url=main_url, read_timeout=timeout):
