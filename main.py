@@ -56,19 +56,50 @@ app.permanent_session_lifetime = timedelta(hours=config.SESSION_LIFETIME_HOURS)
 
 engine = RadioOverlayEngine()
 print(f"[boot] direct chime: {hasattr(engine, '_feed_chime_direct')}")
-sip_client = None
+sip_clients = {"lso": None, "pgs": None}
+SIP_KINDS = ("lso", "pgs")
+SIP_TITLES = {"lso": "ЛСО", "pgs": "ПГС"}
+SIP_FIELDS = {
+    "lso": {"domain": "sip_domain", "username": "sip_username",
+            "password": "sip_password", "port": "sip_port",
+            "transport": "sip_transport", "auto": "auto_start_sip"},
+    "pgs": {"domain": "pgs_domain", "username": "pgs_username",
+            "password": "pgs_password", "port": "pgs_port",
+            "transport": "pgs_transport", "auto": "auto_start_pgs"},
+}
+
+
+def _sip_fields(kind):
+    return SIP_FIELDS.get(kind, SIP_FIELDS["lso"])
+
+
+def _sip_values(kind, data):
+    """Достаёт настройки клиента из запроса (поддерживает старые ключи)."""
+    f = _sip_fields(kind)
+    domain = (data.get(f["domain"]) or data.get("sip_domain") or "").strip()
+    username = (data.get(f["username"]) or data.get("sip_username") or "").strip()
+    password = data.get(f["password"]) or data.get("sip_password") or ""
+    try:
+        port = int(data.get(f["port"], data.get("sip_port", 5060)))
+    except (TypeError, ValueError):
+        port = None
+    transport = data.get(f["transport"], data.get("sip_transport", "udp"))
+    if transport not in ("udp", "tcp"):
+        transport = "udp"
+    return domain, username, password, port, transport
 
 users_store.ensure_default_admin()
 
 
 def _cleanup_on_exit():
-    global sip_client
-    try:
-        if sip_client is not None:
-            sip_client.stop()
-            sip_client = None
-    except Exception:
-        pass
+    for kind in SIP_KINDS:
+        try:
+            client = sip_clients.get(kind)
+            if client is not None:
+                client.stop()
+                sip_clients[kind] = None
+        except Exception:
+            pass
     try:
         engine.stop()
     except Exception:
@@ -216,7 +247,6 @@ def _hw_output_device_name():
 
 
 def _boot_autostart():
-    global sip_client
     saved = settings_store.load()
 
     if saved.get("auto_start_engine"):
@@ -226,36 +256,41 @@ def _boot_autostart():
         except Exception as e:
             print(f"[boot] Ошибка автозапуска движка: {e}")
 
-    if saved.get("auto_start_sip") and saved.get("sip_domain") and \
-       saved.get("sip_username") and saved.get("sip_password"):
-        print("[boot] Автозапуск SIP...")
+    try:
+        from sip_client import SipClient
+    except ImportError as e:
+        print(f"[boot] pjsua2 недоступен: {e}")
+        return
+
+    playback_device = saved.get("hw_output_device")
+    playback_name = _hw_output_device_name()
+
+    for kind in SIP_KINDS:
+        f = _sip_fields(kind)
+        if not saved.get(f["auto"]):
+            continue
+        if not (saved.get(f["domain"]) and saved.get(f["username"]) and saved.get(f["password"])):
+            continue
+        print(f"[boot] Автозапуск SIP {SIP_TITLES[kind]}...")
         try:
-            from sip_client import SipClient
-
-            try:
-                engine.reset_sip_state()
-            except Exception:
-                pass
-
-            # SIP всегда звучит на том же устройстве, что и серверный эфир
-            playback_device = saved.get("hw_output_device")
-            playback_name = _hw_output_device_name()
-
-            sip_client = SipClient(
+            client = SipClient(
                 engine,
-                domain=saved["sip_domain"],
-                username=saved["sip_username"],
-                password=saved["sip_password"],
-                port=saved.get("sip_port", 5060),
-                transport=saved.get("sip_transport", "udp"),
+                domain=saved[f["domain"]],
+                username=saved[f["username"]],
+                password=saved[f["password"]],
+                port=saved.get(f["port"], 5060),
+                transport=saved.get(f["transport"], "udp"),
                 playback_device=playback_device,
                 playback_device_name=playback_name,
+                kind=kind,
             )
-            ok = sip_client.start()
-            print(f"[boot] SIP-клиент создан: start()={ok}")
+            sip_clients[kind] = client
+            engine.set_sip_peer(kind, client)
+            ok = client.start()
+            print(f"[boot] SIP {SIP_TITLES[kind]}: start()={ok}")
         except Exception as e:
-            print(f"[boot] Ошибка автозапуска SIP: {e}")
-            sip_client = None
+            print(f"[boot] Ошибка автозапуска SIP {SIP_TITLES[kind]}: {e}")
+            sip_clients[kind] = None
 
 
 # ==================== Авторизация ====================
@@ -478,7 +513,7 @@ def api_about():
         except Exception:
             pass
     return jsonify({
-        "version": "1.3.1",
+        "version": "1.4.0",
         "author": "Andrey Geben",
         "github": "https://github.com/andrey-geben/office_radio_overlay",
         "license": "MIT",
@@ -593,12 +628,16 @@ def api_set_output():
     if "hw_output_device" not in data:
         return jsonify({"ok": False, "error": "hw_output_device не передан"}), 400
     ok = engine.set_hw_output(data.get("hw_output_device"))
-    if ok and sip_client is not None:
+    if ok:
         # SIP обязан звучать на том же устройстве, что и серверный эфир
-        try:
-            sip_client.set_playback_device(_hw_output_device_name())
-        except Exception as e:
-            print(f"[output] не удалось переключить SIP: {e}")
+        for kind in SIP_KINDS:
+            client = sip_clients.get(kind)
+            if client is None:
+                continue
+            try:
+                client.set_playback_device(_hw_output_device_name())
+            except Exception as e:
+                print(f"[output] не удалось переключить SIP {kind}: {e}")
     return jsonify({"ok": ok, "hw_output": engine.get_state().get("hw_output")})
 
 
@@ -809,155 +848,182 @@ def _sip_common_settings(data):
     return chime_enabled, answer_delay_ms
 
 
-@app.route("/api/sip/save", methods=["POST"])
-@admin_required
-def api_sip_save():
+def _sip_save_impl(kind):
     data = request.get_json(silent=True) or {}
-    domain = (data.get("sip_domain") or "").strip()
-    username = (data.get("sip_username") or "").strip()
-    password = data.get("sip_password") or ""
-    try:
-        port = int(data.get("sip_port", 5060))
-    except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "sip_port должен быть числом"}), 400
-    transport = data.get("sip_transport", "udp")
-    if transport not in ("udp", "tcp"):
-        transport = "udp"
-    chime_enabled = bool(data.get("sip_chime_enabled", True))
-    try:
-        answer_delay_ms = int(data.get("sip_answer_delay_ms", 400))
-    except (TypeError, ValueError):
-        answer_delay_ms = 400
-    answer_delay_ms = max(0, min(3000, answer_delay_ms))
+    domain, username, password, port, transport = _sip_values(kind, data)
+    if port is None:
+        return jsonify({"ok": False, "error": "порт должен быть числом"}), 400
+    chime_enabled, delay_ms = _sip_common_settings(data)
+    ok, err = _validate_sip_domain(domain)
+    if not ok:
+        return jsonify({"ok": False, "error": err}), 400
+    f = _sip_fields(kind)
+    saved = settings_store.load()
+    if not password:
+        password = saved.get(f["password"], "")
+    settings_store.update(**{
+        f["domain"]: domain, f["username"]: username,
+        f["password"]: password, f["port"]: port, f["transport"]: transport,
+        "sip_chime_enabled": chime_enabled,
+        "sip_answer_delay_ms": delay_ms,
+    })
+    engine.update_settings(sip_chime_enabled=chime_enabled,
+                           sip_answer_delay_ms=delay_ms)
+    return jsonify({"ok": True})
 
+
+def _sip_start_impl(kind):
+    data = request.get_json(silent=True) or {}
+    domain, username, password, port, transport = _sip_values(kind, data)
+    if port is None:
+        return jsonify({"ok": False, "error": "порт должен быть числом"}), 400
+    if not domain or not username:
+        return jsonify({"ok": False, "error": "Заполните домен и логин"}), 400
     ok, err = _validate_sip_domain(domain)
     if not ok:
         return jsonify({"ok": False, "error": err}), 400
 
+    f = _sip_fields(kind)
     saved = settings_store.load()
     if not password:
-        password = saved.get("sip_password", "")
+        password = saved.get(f["password"], "")
+    if not password:
+        return jsonify({"ok": False, "error": "Введите пароль"}), 400
 
-    settings_store.update(
-        sip_domain=domain, sip_username=username, sip_password=password,
-        sip_port=port, sip_transport=transport,
-        sip_chime_enabled=chime_enabled,
-        sip_answer_delay_ms=answer_delay_ms,
-    )
+    chime_enabled, delay_ms = _sip_common_settings(data)
+    settings_store.update(**{
+        f["domain"]: domain, f["username"]: username,
+        f["password"]: password, f["port"]: port, f["transport"]: transport,
+        "sip_chime_enabled": chime_enabled,
+        "sip_answer_delay_ms": delay_ms,
+    })
     engine.update_settings(sip_chime_enabled=chime_enabled,
-                           sip_answer_delay_ms=answer_delay_ms)
+                           sip_answer_delay_ms=delay_ms)
+
+    client = sip_clients.get(kind)
+    if client is not None and client.is_running():
+        return jsonify({"ok": True, "already_running": True, "kind": kind,
+                        "message": "Клиент уже подключён. Для смены настроек нажмите «Отключить»."})
+
+    playback_device = saved.get("hw_output_device")
+    playback_name = _hw_output_device_name()
+
+    if client is None:
+        try:
+            from sip_client import SipClient
+        except ImportError as e:
+            return jsonify({"ok": False, "error": f"pjsua2 не установлен: {e}"}), 500
+        client = SipClient(
+            engine, domain=domain, username=username, password=password,
+            port=port, transport=transport,
+            playback_device=playback_device,
+            playback_device_name=playback_name,
+            kind=kind,
+        )
+        sip_clients[kind] = client
+        engine.set_sip_peer(kind, client)
+    else:
+        client.domain = domain
+        client.username = username
+        client.password = password
+        client.port = port
+        client.transport = transport
+        client.playback_device = playback_device
+        client.playback_device_name = playback_name
+
+    ok = client.start()
+    return jsonify({"ok": ok, "kind": kind, "settings": engine.get_settings()})
+
+
+def _sip_stop_impl(kind):
+    client = sip_clients.get(kind)
+    if client is not None:
+        client.stop()
+    try:
+        if engine.get_sip_kind() in (None, kind):
+            engine.reset_sip_state()
+    except Exception:
+        pass
     return jsonify({"ok": True})
+
+
+def _sip_status_impl(kind):
+    f = _sip_fields(kind)
+    saved = settings_store.load()
+    client = sip_clients.get(kind)
+    return jsonify({
+        "kind": kind,
+        "title": SIP_TITLES.get(kind, kind),
+        "running": bool(client is not None and client.is_running()),
+        "engine_sip_active": engine.is_sip_active(),
+        "engine_sip_kind": engine.get_sip_kind(),
+        "sip_domain": saved.get(f["domain"], ""),
+        "sip_username": saved.get(f["username"], ""),
+        "sip_password_set": bool(saved.get(f["password"])),
+        "sip_port": saved.get(f["port"], 5060),
+        "sip_transport": saved.get(f["transport"], "udp"),
+        "auto_start_sip": saved.get(f["auto"], False),
+        "auto_start_engine": saved.get("auto_start_engine", False),
+        "sip_chime_enabled": saved.get("sip_chime_enabled", True),
+        "sip_answer_delay_ms": saved.get("sip_answer_delay_ms", 400),
+    })
+
+
+@app.route("/api/sip/<kind>/save", methods=["POST"])
+@admin_required
+def api_sip_save_kind(kind):
+    if kind not in SIP_KINDS:
+        return jsonify({"ok": False, "error": "неизвестный SIP-клиент"}), 404
+    return _sip_save_impl(kind)
+
+
+@app.route("/api/sip/<kind>/start", methods=["POST"])
+@admin_required
+def api_sip_start_kind(kind):
+    if kind not in SIP_KINDS:
+        return jsonify({"ok": False, "error": "неизвестный SIP-клиент"}), 404
+    return _sip_start_impl(kind)
+
+
+@app.route("/api/sip/<kind>/stop", methods=["POST"])
+@admin_required
+def api_sip_stop_kind(kind):
+    if kind not in SIP_KINDS:
+        return jsonify({"ok": False, "error": "неизвестный SIP-клиент"}), 404
+    return _sip_stop_impl(kind)
+
+
+@app.route("/api/sip/<kind>/status")
+@login_required
+def api_sip_status_kind(kind):
+    if kind not in SIP_KINDS:
+        return jsonify({"ok": False, "error": "неизвестный SIP-клиент"}), 404
+    return _sip_status_impl(kind)
+
+
+# --- Совместимость: старые /api/sip/* = ЛСО ---
+@app.route("/api/sip/save", methods=["POST"])
+@admin_required
+def api_sip_save():
+    return _sip_save_impl("lso")
 
 
 @app.route("/api/sip/start", methods=["POST"])
 @admin_required
 def api_sip_start():
-    global sip_client
-
-    data = request.get_json(silent=True) or {}
-    domain = (data.get("sip_domain") or "").strip()
-    username = (data.get("sip_username") or "").strip()
-    password = data.get("sip_password") or ""
-    try:
-        port = int(data.get("sip_port", 5060))
-    except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "sip_port должен быть числом"}), 400
-    transport = data.get("sip_transport", "udp")
-    if transport not in ("udp", "tcp"):
-        transport = "udp"
-
-    if not domain or not username:
-        return jsonify({"ok": False, "error": "Заполните домен и логин"}), 400
-
-    ok, err = _validate_sip_domain(domain)
-    if not ok:
-        return jsonify({"ok": False, "error": err}), 400
-
-    saved = settings_store.load()
-    if not password:
-        password = saved.get("sip_password", "")
-    if not password:
-        return jsonify({"ok": False, "error": "Введите пароль"}), 400
-
-    chime_enabled, answer_delay_ms = _sip_common_settings(data)
-
-    settings_store.update(
-        sip_domain=domain, sip_username=username, sip_password=password,
-        sip_port=port, sip_transport=transport,
-        sip_chime_enabled=chime_enabled, sip_answer_delay_ms=answer_delay_ms,
-    )
-    engine.update_settings(sip_chime_enabled=chime_enabled,
-                           sip_answer_delay_ms=answer_delay_ms)
-
-    if sip_client is not None and sip_client.is_running():
-        return jsonify({
-            "ok": True,
-            "already_running": True,
-            "message": "SIP уже подключён. Для смены настроек нажмите «Отключить».",
-        })
-
-    try:
-        engine.reset_sip_state()
-    except Exception:
-        pass
-
-    playback_device = saved.get("hw_output_device")
-    playback_name = _hw_output_device_name()
-
-    if sip_client is not None:
-        sip_client.domain = domain
-        sip_client.username = username
-        sip_client.password = password
-        sip_client.port = port
-        sip_client.transport = transport
-        sip_client.playback_device = playback_device
-        sip_client.playback_device_name = playback_name
-        ok = sip_client.start()
-        return jsonify({"ok": ok, "reused": True})
-
-    try:
-        from sip_client import SipClient
-    except ImportError as e:
-        return jsonify({"ok": False, "error": f"pjsua2 не установлен: {e}"}), 500
-
-    sip_client = SipClient(
-        engine, domain=domain, username=username,
-        password=password, port=port, transport=transport,
-        playback_device=playback_device,
-        playback_device_name=playback_name,
-    )
-    ok = sip_client.start()
-    return jsonify({"ok": ok, "settings": engine.get_settings()})
+    return _sip_start_impl("lso")
 
 
 @app.route("/api/sip/stop", methods=["POST"])
 @admin_required
 def api_sip_stop():
-    global sip_client
-    if sip_client is not None:
-        sip_client.stop()
-    engine.reset_sip_state()
-    return jsonify({"ok": True})
+    return _sip_stop_impl("lso")
 
 
 @app.route("/api/sip/status")
 @login_required
 def api_sip_status():
-    running = bool(sip_client is not None and sip_client.is_running())
-    saved = settings_store.load()
-    return jsonify({
-        "running": running,
-        "engine_sip_active": engine.is_sip_active(),
-        "sip_domain": saved.get("sip_domain", ""),
-        "sip_username": saved.get("sip_username", ""),
-        "sip_password_set": bool(saved.get("sip_password")),
-        "sip_port": saved.get("sip_port", 5060),
-        "sip_transport": saved.get("sip_transport", "udp"),
-        "auto_start_sip": saved.get("auto_start_sip", False),
-        "auto_start_engine": saved.get("auto_start_engine", False),
-        "sip_chime_enabled": saved.get("sip_chime_enabled", True),
-        "sip_answer_delay_ms": saved.get("sip_answer_delay_ms", 400),
-    })
+    return _sip_status_impl("lso")
 
 
 @app.route("/api/chimes", methods=["GET"])
@@ -1016,10 +1082,12 @@ def api_sip_test_chime():
 @admin_required
 def api_autostart():
     data = request.get_json(silent=True) or {}
-    settings_store.update(
-        auto_start_engine=bool(data.get("auto_start_engine")),
-        auto_start_sip=bool(data.get("auto_start_sip")),
-    )
+    values = {}
+    for key in ("auto_start_engine", "auto_start_sip", "auto_start_pgs"):
+        if key in data:
+            values[key] = bool(data.get(key))
+    if values:
+        settings_store.update(**values)
     return jsonify({"ok": True})
 
 

@@ -1787,6 +1787,103 @@ function bindSetupWizard() {
 }
 
 
+
+// ==================== SIP ПГС (второй клиент) ====================
+let pgsInitialized = false;
+
+function _pgsPayload() {
+    return {
+        pgs_domain: ($('pgs_domain') || {}).value ? $('pgs_domain').value.trim() : '',
+        pgs_username: ($('pgs_username') || {}).value ? $('pgs_username').value.trim() : '',
+        pgs_password: ($('pgs_password') || {}).value || '',
+        pgs_port: parseInt(($('pgs_port') || {}).value, 10) || 5060,
+        pgs_transport: ($('pgs_transport') || {}).value || 'udp',
+        sip_chime_enabled: $('sip_chime_enabled') ? $('sip_chime_enabled').checked : true,
+        sip_answer_delay_ms: parseInt(($('sip_answer_delay') || {}).value, 10) || 0,
+    };
+}
+
+async function refreshPgsStatus() {
+    if (!$('pgs_domain')) return;
+    try {
+        const r = await fetch('/api/sip/pgs/status');
+        if (!r.ok) return;
+        const data = await r.json();
+        if ($('pgs-status')) $('pgs-status').textContent = data.running ? '✅ подключён' : '⏹ отключён';
+        if ($('pgs-engine')) {
+            $('pgs-engine').textContent = data.engine_sip_active
+                ? (data.engine_sip_kind === 'pgs' ? '📞 ПГС в эфире' : '📞 ЛСО в эфире')
+                : '—';
+        }
+        if ($('btn-pgs-start')) $('btn-pgs-start').disabled = data.running;
+        if ($('btn-pgs-stop')) $('btn-pgs-stop').disabled = !data.running;
+        if (!pgsInitialized) {
+            $('pgs_domain').value = data.sip_domain || '';
+            $('pgs_username').value = data.sip_username || '';
+            $('pgs_port').value = data.sip_port || 5060;
+            $('pgs_transport').value = data.sip_transport || 'udp';
+            if ($('auto_start_pgs')) $('auto_start_pgs').checked = !!data.auto_start_sip;
+            $('pgs_password').placeholder = data.sip_password_set
+                ? '•••••••• (сохранён)' : 'Введите пароль';
+            pgsInitialized = true;
+        }
+    } catch (e) { console.error(e); }
+}
+
+function bindPgs() {
+    if (!$('btn-pgs-save')) return;
+    $('btn-pgs-save').onclick = async () => {
+        const msg = $('pgs-message');
+        msg.textContent = '⏳ Сохранение...';
+        try {
+            const r = await fetch('/api/sip/pgs/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(_pgsPayload()),
+            });
+            const data = await r.json();
+            msg.textContent = data.ok ? '✅ Сохранено' : '❌ ' + (data.error || 'ошибка');
+            if (data.ok) {
+                $('pgs_password').value = '';
+                pgsInitialized = false;
+                refreshPgsStatus();
+            }
+        } catch (e) { msg.textContent = '❌ ' + e.message; }
+        setTimeout(() => msg.textContent = '', 4000);
+    };
+    $('btn-pgs-start').onclick = async () => {
+        const msg = $('pgs-message');
+        msg.textContent = '⏳ Подключение...';
+        try {
+            const r = await fetch('/api/sip/pgs/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(_pgsPayload()),
+            });
+            const data = await r.json();
+            msg.textContent = data.ok ? '✅ ПГС подключён' : '❌ ' + (data.error || 'ошибка');
+            $('pgs_password').value = '';
+            pgsInitialized = false;
+            refreshPgsStatus();
+        } catch (e) { msg.textContent = '❌ ' + e.message; }
+        setTimeout(() => msg.textContent = '', 5000);
+    };
+    $('btn-pgs-stop').onclick = async () => {
+        await fetch('/api/sip/pgs/stop', { method: 'POST' });
+        refreshPgsStatus();
+    };
+    if ($('auto_start_pgs')) {
+        $('auto_start_pgs').onchange = async (e) => {
+            await fetch('/api/autostart', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ auto_start_pgs: e.target.checked }),
+            });
+        };
+    }
+    refreshPgsStatus();
+}
+
 // ==================== Библиотека сигналов внимания ====================
 async function loadChimeList() {
     const sel = $("chime-select");
@@ -2033,3 +2130,5 @@ bindWebPlayerLocalToggle();
 initEqToggle();
 
 bindChimeLibrary();
+
+bindPgs();

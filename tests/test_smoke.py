@@ -107,5 +107,42 @@ class ChimeLibraryTest(unittest.TestCase):
             self.assertGreater(main.engine.get_chime_seconds(), 0.1)
 
 
+
+
+class TwoSipClientsTest(unittest.TestCase):
+    def setUp(self):
+        main.app.config["TESTING"] = True
+
+    def test_status_both_kinds(self):
+        with main.app.test_client() as c:
+            with c.session_transaction() as s:
+                s["logged_in"] = True
+                s["username"] = "admin"
+                s["role"] = "admin"
+            for kind in ("lso", "pgs"):
+                d = c.get(f"/api/sip/{kind}/status").get_json()
+                self.assertEqual(d.get("kind"), kind)
+
+    def test_engine_sip_kind(self):
+        main.engine.enter_sip_mode("pgs")
+        self.assertEqual(main.engine.get_sip_kind(), "pgs")
+        main.engine.exit_sip_mode()
+        self.assertIsNone(main.engine.get_sip_kind())
+
+    def test_pgs_low_priority(self):
+        from sip_client import SipClient
+
+        class Eng:
+            def is_sip_active(self): return True
+            def is_chime_active(self): return False
+            def get_sip_kind(self): return "lso"
+            def preempt_for_lso(self): return True
+
+        pgs = SipClient(Eng(), "d", "u", "p", kind="pgs")
+        self.assertFalse(pgs._allow_incoming())
+        lso = SipClient(Eng(), "d", "u", "p", kind="lso")
+        self.assertTrue(lso._allow_incoming())
+
+
 if __name__ == "__main__":
     unittest.main()

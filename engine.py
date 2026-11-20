@@ -120,6 +120,8 @@ class RadioOverlayEngine:
         # --- SIP / chime ---
         self._sip_active = False
         self._sip_call = None
+        self._sip_kind = None
+        self._sip_peers = {}
 
         self._chime_data = None
         self._chime_active = False
@@ -278,11 +280,44 @@ class RadioOverlayEngine:
         except Exception:
             return 0.0
 
-    def enter_sip_mode(self, sip_call=None):
+    def set_sip_peer(self, kind, client):
+        """Регистрирует SIP-клиент (lso/pgs) для приоритетного вытеснения."""
+        with self._lock:
+            self._sip_peers[kind] = client
+
+    def get_sip_kind(self):
+        with self._lock:
+            return self._sip_kind
+
+    def preempt_for_lso(self, timeout=3.0):
+        """ЛСО важнее: завершает активный ПГС-звонок и ждёт освобождения."""
+        with self._lock:
+            active = self._sip_active
+            kind = self._sip_kind
+            peer = self._sip_peers.get("pgs")
+        if not active or kind != "pgs" or peer is None:
+            return True
+        logger.info("ЛСО: вытесняем активный ПГС-звонок")
+        try:
+            peer.hangup()
+        except Exception as e:
+            logger.warning("ЛСО: не удалось завершить ПГС: %s", e)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            with self._lock:
+                if not self._sip_active:
+                    return True
+            time.sleep(0.05)
+        logger.warning("ЛСО: ПГС не завершился за %.0f c", timeout)
+        return False
+
+    def enter_sip_mode(self, kind="lso", sip_call=None):
         with self._lock:
             self._sip_active = True
+            self._sip_kind = kind
             self._sip_call = sip_call
             self._state["sip_active"] = True
+            self._state["sip_kind"] = kind
             chime_playing = self._chime_active
         logger.info("SIP mode: ON (радио будет молчать)")
         self._set_event("📞 SIP-звонок в эфире", force=True)
@@ -299,8 +334,10 @@ class RadioOverlayEngine:
     def exit_sip_mode(self):
         with self._lock:
             self._sip_active = False
+            self._sip_kind = None
             self._sip_call = None
             self._state["sip_active"] = False
+            self._state["sip_kind"] = None
         logger.info("SIP mode: OFF (радио возвращается)")
         self._set_event("streaming", force=True)
         self._update_state(
@@ -314,6 +351,7 @@ class RadioOverlayEngine:
         """Принудительно сбрасывает SIP-состояние в idle."""
         with self._lock:
             self._sip_active = False
+            self._sip_kind = None
             self._sip_call = None
             self._chime_active = False
             self._chime_pos = 0

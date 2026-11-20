@@ -320,7 +320,7 @@
         </div><!-- /.stack-system -->
 
         <footer class="footer">
-            © 2026 Andrey Geben · <a href="https://github.com/andrey-geben/office_radio_overlay" target="_blank">Office Radio Overlay</a> · MIT License · v1.3.1
+            © 2026 Andrey Geben · <a href="https://github.com/andrey-geben/office_radio_overlay" target="_blank">Office Radio Overlay</a> · MIT License · v1.4.0
         </footer>
     </main>
 
@@ -619,7 +619,7 @@
     <div class="modal-backdrop" data-close></div>
     <div class="modal-content">
         <button class="modal-close" data-close>×</button>
-        <h2>📞 SIP / ЛСО</h2>
+        <h2>📞 SIP: ЛСО и ПГС</h2>
 
         <details class="help-block">
             <summary>❓ Как настроить SIP-подключение</summary>
@@ -638,23 +638,24 @@
         </details>
 
         <details class="help-block">
-            <summary>❓ Почему SIP перехватывает звук / куда идут радио и звонок</summary>
+            <summary>❓ Два SIP-клиента: ЛСО и ПГС</summary>
             <div class="help-content">
-                <p>На сервере два независимых источника звука:</p>
-                <ul>
-                    <li><b>HardwareOutput</b> (sounddevice) — радио + объявления + chime («плим-блим»)</li>
-                    <li><b>PJSIP</b> (pjsua2) — голос звонящего</li>
-                </ul>
-                <p><span class="warn">Проблема:</span> если оба используют <u>одно и то же</u> физическое устройство (например, Realtek), драйвер WMME блокирует одного из них. Звук в браузере (через <code>/stream</code>) пропадает, chime может не играть.</p>
-                <p><span class="ok">Решение:</span> развести потоки по разным устройствам:</p>
-                <ul>
-                    <li><b>🔊 Аппаратный выход</b> (в «Выход аудио») → встроенные динамики Realtek</li>
-                    <li><b>PJSIP</b> → отдельная USB-звуковая карта / USB-наушники (настраивается в <code>sip_client.py</code>, строка <code>setPlaybackDev(N)</code>)</li>
-                </ul>
-                <p>Или используйте <b>VB-Audio Cable</b> как виртуальный микшер — тогда радио и SIP микшируются в один канал, но это требует ручной настройки Windows.</p>
+                <p><b>ЛСО</b> — громкоговорящее оповещение для <b>ЧС и сообщений об опасности</b>.
+                   Приоритет <b>выше</b>: если в этот момент идёт звонок ПГС, он завершается,
+                   играет сигнал внимания и соединяется ЛСО.</p>
+                <p><b>ПГС</b> — промышленная громкоговорящая связь для <b>производственных сообщений</b>.
+                   Приоритет <b>ниже</b>: во время звонка ЛСО или звучания сигнала внимания
+                   входящий ПГС отклоняется (486 Busy Here).</p>
+                <p><span class="ok">Кто может дозвониться</span> — определяется <b>на стороне АТС</b>
+                   (права extension, маршруты, разрешённые номера). В приложении белые/чёрные
+                   списки не ведутся: если АТС пропустила вызов на нужный SIP-аккаунт, он будет обслужен.</p>
+                <p>Оба клиента звучат на том же устройстве, что и серверный эфир, и используют
+                   общий сигнал внимания и паузу перед ответом.</p>
             </div>
         </details>
 
+        <h3 style="margin-top:18px;">1. ЛСО — ЧС и оповещения об опасности</h3>
+        <div class="hint" style="margin-bottom:8px;">Приоритет выше: вытесняет активный звонок ПГС.</div>
         <div class="form-row">
             <label>SIP-домен <input type="text" id="sip_domain" placeholder="sip.example.com"></label>
             <label>Логин <input type="text" id="sip_username" placeholder="office_radio"></label>
@@ -672,7 +673,52 @@
                 Автозапускать SIP
             </label>
         </div>
+        <div class="buttons">
+            <button type="button" id="btn-sip-save" class="btn btn-save">💾 Сохранить</button>
+            <button type="button" id="btn-sip-start" class="btn btn-start">▶ Подключить</button>
+            <button type="button" id="btn-sip-stop" class="btn btn-stop">■ Отключить</button>
+        </div>
+        <div class="status-grid" style="margin-top:16px;">
+            <div><span class="label">Статус SIP:</span><span id="sip-status" class="value">—</span></div>
+            <div><span class="label">Режим звонка:</span><span id="sip-engine" class="value">—</span></div>
+        </div>
+        <span id="sip-message" class="upload-status"></span>
+
+        <h3 style="margin-top:22px;">2. ПГС — производственные сообщения</h3>
+        <div class="hint" style="margin-bottom:8px;">
+            Приоритет ниже: во время ЛСО или сигнала внимания звонок отклоняется.
+            Кто может дозвониться — определяется на АТС, списки в приложении не ведутся.
+        </div>
         <div class="form-row">
+            <label>SIP-домен ПГС <input type="text" id="pgs_domain" placeholder="sip.example.com"></label>
+            <label>Логин ПГС <input type="text" id="pgs_username" placeholder="pgs_radio"></label>
+        </div>
+        <div class="form-row">
+            <label>Пароль ПГС <input type="password" id="pgs_password" placeholder="Введите пароль"></label>
+            <label>Порт ПГС <input type="number" id="pgs_port" value="5060" min="1" max="65535"></label>
+        </div>
+        <div class="form-row">
+            <label>Транспорт ПГС
+                <select id="pgs_transport"><option value="udp">UDP</option><option value="tcp">TCP</option></select>
+            </label>
+            <label class="checkbox-row" style="align-self:end; margin-bottom:8px;">
+                <input type="checkbox" id="auto_start_pgs">
+                Автозапускать ПГС
+            </label>
+        </div>
+        <div class="buttons">
+            <button type="button" id="btn-pgs-save" class="btn btn-save">💾 Сохранить ПГС</button>
+            <button type="button" id="btn-pgs-start" class="btn btn-start">▶ Подключить ПГС</button>
+            <button type="button" id="btn-pgs-stop" class="btn btn-stop">■ Отключить ПГС</button>
+        </div>
+        <div class="status-grid" style="margin-top:12px;">
+            <div><span class="label">Статус ПГС:</span><span id="pgs-status" class="value">—</span></div>
+            <div><span class="label">Режим звонка:</span><span id="pgs-engine" class="value">—</span></div>
+        </div>
+        <span id="pgs-message" class="upload-status"></span>
+
+        <h3 style="margin-top:22px;">Сигнал внимания (общий для ЛСО и ПГС)</h3>
+<div class="form-row">
             <label>Пауза после сигнала перед ответом, мс
                 <input type="number" id="sip_answer_delay" min="0" max="3000" step="50" value="400">
             </label>
@@ -702,16 +748,7 @@
             При входящем звонке радио плавно затухает, играет «плим-блим», затем выдерживается пауза (чтобы хвост сигнала не наложился на голос), и только после этого SIP-звонок соединяется.
             Тест играет сигнал прямо сейчас — убедитесь, что радио/объявление приостановится.
         </div>
-        <div class="buttons">
-            <button type="button" id="btn-sip-save" class="btn btn-save">💾 Сохранить</button>
-            <button type="button" id="btn-sip-start" class="btn btn-start">▶ Подключить</button>
-            <button type="button" id="btn-sip-stop" class="btn btn-stop">■ Отключить</button>
-        </div>
-        <div class="status-grid" style="margin-top:16px;">
-            <div><span class="label">Статус SIP:</span><span id="sip-status" class="value">—</span></div>
-            <div><span class="label">Режим звонка:</span><span id="sip-engine" class="value">—</span></div>
-        </div>
-        <span id="sip-message" class="upload-status"></span>
+        
         <div class="hint" style="margin-top:16px;">
             При входящем звонке радио приостановится, аудио звонка пойдёт на устройство сервера по умолчанию.
             После завершения — радио возобновится.

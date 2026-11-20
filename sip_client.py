@@ -14,8 +14,10 @@ import config
 class SipClient:
     def __init__(self, engine, domain, username, password,
                  port=5060, transport="udp", playback_device=None,
-                 playback_device_name=None):
+                 playback_device_name=None, kind="lso"):
         self.engine = engine
+        self.kind = kind
+        self.title = "ЛСО" if kind == "lso" else "ПГС"
         self.domain = domain
         self.username = username
         self.password = password
@@ -134,6 +136,12 @@ class SipClient:
             "playback_device": dev_id,
         })
 
+    def hangup(self):
+        """Завершает активный звонок (используется приоритетом ЛСО)."""
+        if not self.is_running():
+            return False
+        return self._send({"cmd": "hangup"})
+
     def stop(self):
         with self._lock:
             self._running = False
@@ -245,7 +253,11 @@ class SipClient:
 
         elif ev == "incoming_call":
             remote = msg.get("remote", "unknown")
-            print(f"[SIP] Входящий звонок от: {remote}")
+            print(f"[SIP:{self.title}] Входящий звонок от: {remote}")
+            if not self._allow_incoming():
+                print(f"[SIP:{self.title}] Занято/низкий приоритет — отклоняем 486")
+                self._send({"cmd": "answer", "status": 486})
+                return
             threading.Thread(
                 target=self._handle_incoming,
                 daemon=True,
@@ -255,7 +267,7 @@ class SipClient:
         elif ev == "call_confirmed":
             print("[SIP] Звонок подтверждён.")
             try:
-                self.engine.enter_sip_mode()
+                self.engine.enter_sip_mode(self.kind)
             except Exception as e:
                 print(f"[SIP] enter_sip_mode error: {e}")
 
@@ -281,6 +293,20 @@ class SipClient:
             where = msg.get("where", "?")
             error = msg.get("error", "?")
             print(f"[SIP] ERROR [{where}]: {error}")
+
+    def _allow_incoming(self):
+        """ПГС уступает ЛСО; ЛСО вытесняет ПГС."""
+        try:
+            if self.kind == "pgs":
+                if self.engine.is_sip_active() or self.engine.is_chime_active():
+                    return False
+                return True
+            if self.engine.is_sip_active() and self.engine.get_sip_kind() == "pgs":
+                return self.engine.preempt_for_lso()
+            return True
+        except Exception as e:
+            print(f"[SIP] priority check error: {e}")
+            return True
 
     # --- Обработка входящего ---
 

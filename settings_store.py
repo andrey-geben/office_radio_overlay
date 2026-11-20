@@ -53,6 +53,12 @@ def _defaults():
         # --- Автозапуск ---
         "auto_start_engine": False,
         "auto_start_sip": False,
+        "auto_start_pgs": False,
+        "pgs_domain": "",
+        "pgs_username": "",
+        "pgs_password": "",
+        "pgs_port": 5060,
+        "pgs_transport": "udp",
     }
 
 
