@@ -272,7 +272,8 @@ class RadioOverlayEngine:
         if data is None:
             return 0.0
         try:
-            return len(data) / float(config.SAMPLE_RATE)
+            # байты -> сэмплы (2 байта) -> каналы -> секунды
+            return len(data) / 2.0 / max(1, config.CHANNELS) / float(config.SAMPLE_RATE)
         except Exception:
             return 0.0
 
@@ -378,9 +379,15 @@ class RadioOverlayEngine:
             return False
 
         engine_running = bool(self._state.get("running"))
-        chime = self._load_chime() if (chime_enabled and engine_running) else None
+        try:
+            hw_ready = self._hw_output.is_running()
+        except Exception:
+            hw_ready = False
+        chime = self._load_chime() if (chime_enabled and engine_running and hw_ready) else None
         if not engine_running:
             logger.info("Эфир остановлен — SIP соединяем без сигнала внимания")
+        elif not hw_ready:
+            logger.info("Аппаратный выход не запущен — SIP соединяем без сигнала внимания")
 
         if chime is None:
             with self._lock:
@@ -398,10 +405,15 @@ class RadioOverlayEngine:
             self._chime_data = chime
             self._chime_pos = 0
             self._chime_active = True
+            # Сигнал играем напрямую в карту: не зависит от темпа источника
+            # и не растягивается, если поток радио подтормаживает.
+            self._chime_direct = True
             self._chime_call = call
             if self._ann_active:
                 self._ann_active = False
                 self._ann_pos = 0
+
+        threading.Thread(target=self._feed_chime_direct, args=(chime,), daemon=True).start()
 
         self._set_event("🔔 Входящий звонок — сигнал внимания", force=True)
         self._update_state(
@@ -421,6 +433,7 @@ class RadioOverlayEngine:
             self._chime_active = False
             self._chime_pos = 0
             self._chime_call = None
+            self._chime_direct = False
         if was_active:
             self._set_event("📞 Звонок отменён", force=True)
             self._update_state(output_type="idle", output_name=None, output_level_db=-90.0)
@@ -438,6 +451,7 @@ class RadioOverlayEngine:
             self._chime_data = chime
             self._chime_pos = 0
             self._chime_active = True
+            self._chime_direct = False
             self._chime_call = None
             if self._ann_active:
                 self._ann_active = False
@@ -495,6 +509,7 @@ class RadioOverlayEngine:
             self._chime_active = False
             self._chime_pos = 0
             self._chime_call = None
+            self._chime_direct = False
         self._update_state(last_event="streaming")
 
     # ==================== Публичное API ====================
@@ -1258,6 +1273,10 @@ class RadioOverlayEngine:
                     break
 
                 if self._chime_active:
+                    if self._chime_direct:
+                        # Сигнал играет отдельный поток прямо в карту,
+                        # радио в это время молчит.
+                        continue
                     self._play_chime_chunk(chunk)
                     continue
 
