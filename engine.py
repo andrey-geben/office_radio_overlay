@@ -234,6 +234,37 @@ class RadioOverlayEngine:
         with self._lock:
             return self._chime_active
 
+    def get_chime_state(self):
+        """Прогресс сигнала внимания: (active, pos_samples, total_samples)."""
+        with self._lock:
+            total = len(self._chime_data) if self._chime_data else 0
+            return bool(self._chime_active), int(self._chime_pos), int(total)
+
+    def play_chime_direct(self):
+        """Играет сигнал прямо в звуковую карту, не дожидаясь потока.
+
+        Нужен, если радио в этот момент переподключается и обычный chime
+        (микшируемый в потоке) не успевает начаться: иначе трубка
+        снимается раньше сигнала и chime звучит уже в разговоре.
+        Возвращает длительность сигнала в секундах (0, если играть некуда).
+        """
+        chime = self._load_chime()
+        if not chime:
+            return 0.0
+        hw = self._hw_output
+        if not hw.is_running():
+            return 0.0
+        block = config.BLOCK_SIZE * 2
+        block_sec = config.BLOCK_SIZE / float(config.SAMPLE_RATE)
+
+        def feeder():
+            for off in range(0, len(chime), block):
+                hw.push(chime[off:off + block])
+                time.sleep(block_sec)
+
+        threading.Thread(target=feeder, daemon=True).start()
+        return len(chime) / 2.0 / config.SAMPLE_RATE
+
     def get_chime_seconds(self):
         """Длительность сигнала внимания в секундах (0 — если нет)."""
         with self._lock:

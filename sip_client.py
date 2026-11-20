@@ -323,18 +323,49 @@ class SipClient:
             self._send({"cmd": "answer", "status": 200})
             return
 
-        # 1) Ждём, пока chime сгенерирован (engine -> HW queue)
-        deadline = time.time() + 15.0
+        # 1) Ждём, пока сигнал РЕАЛЬНО зазвучит. Если поток в этот момент
+        #    переподключается, chime не начнётся — играем его напрямую в карту.
+        started = False
+        deadline = time.time() + 3.0
         while time.time() < deadline:
             try:
-                if not self.engine.is_chime_active():
-                    break
+                active, pos, total = self.engine.get_chime_state()
             except Exception:
+                active, pos, total = False, 0, 0
+            if not active:
+                break
+            if pos > 0:
+                started = True
                 break
             time.sleep(0.02)
 
         t_gen = time.time()
-        print(f"[SIP] [{t_gen:.3f}] chime generated (elapsed={t_gen - t0:.2f}s)")
+        if started:
+            print(f"[SIP] [{t_gen:.3f}] chime started in air (pos>0)")
+        else:
+            try:
+                active, pos, total = self.engine.get_chime_state()
+            except Exception:
+                active, pos, total = False, 0, 0
+            if active:
+                print("[SIP] поток не идёт — играем chime напрямую в устройство")
+                try:
+                    self.engine.cancel_chime()
+                    played = self.engine.play_chime_direct()
+                    print(f"[SIP] chime direct: {played:.2f} c")
+                except Exception as e:
+                    print(f"[SIP] chime direct error: {e}")
+
+        # 2) Ждём полного проигрывания сигнала (в эфире или напрямую)
+        wait_deadline = time.time() + 20.0
+        while time.time() < wait_deadline:
+            try:
+                active, pos, total = self.engine.get_chime_state()
+            except Exception:
+                break
+            if not active or (total and pos >= total):
+                break
+            time.sleep(0.02)
 
         # 2) Ждём, пока HW queue РЕАЛЬНО опустеет в эфире
         hw = None
