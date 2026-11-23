@@ -93,10 +93,7 @@ class ChimeLibraryTest(unittest.TestCase):
     def test_list_and_select(self):
         main.app.config["TESTING"] = True
         with main.app.test_client() as c:
-            with c.session_transaction() as s:
-                s["logged_in"] = True
-                s["username"] = "admin"
-                s["role"] = "admin"
+            _admin_session(c)
             items = c.get("/api/chimes").get_json()["items"]
             if not items:
                 self.skipTest("Библиотека chime пуста (в CI нет assets/chimes)")
@@ -116,10 +113,7 @@ class TwoSipClientsTest(unittest.TestCase):
 
     def test_status_both_kinds(self):
         with main.app.test_client() as c:
-            with c.session_transaction() as s:
-                s["logged_in"] = True
-                s["username"] = "admin"
-                s["role"] = "admin"
+            _admin_session(c)
             for kind in ("lso", "pgs"):
                 d = c.get(f"/api/sip/{kind}/status").get_json()
                 self.assertEqual(d.get("kind"), kind)
