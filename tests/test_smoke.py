@@ -10,12 +10,36 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import main  # noqa: E402
+import users_store  # noqa: E402
+
+TEST_ADMIN = "_ci_admin"
+TEST_PASSWORD = "ci-test-password"
+
+
+def setUpModule():
+    """Отдельный тестовый админ без обязательной смены пароля."""
+    try:
+        if users_store.get_user(TEST_ADMIN):
+            users_store.update_password(TEST_ADMIN, TEST_PASSWORD, must_change=False)
+        else:
+            users_store.create_user(
+                TEST_ADMIN, TEST_PASSWORD, role="admin", must_change=False
+            )
+    except Exception:
+        pass
+
+
+def tearDownModule():
+    try:
+        users_store.delete_user(TEST_ADMIN)
+    except Exception:
+        pass
 
 
 def _admin_session(client):
     with client.session_transaction() as s:
         s["logged_in"] = True
-        s["username"] = "admin"
+        s["username"] = TEST_ADMIN
         s["role"] = "admin"
         s["must_change_password"] = False
 
