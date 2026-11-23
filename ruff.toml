@@ -1,0 +1,20 @@
+target-version = "py310"
+line-length = 120
+
+extend-exclude = [
+    ".venv",
+    "build",
+    "dist",
+    "dist_new",
+    "assets",
+    "docs",
+]
+
+[lint]
+select = [
+    "E9",   # синтаксис
+    "F63",  # некорректные format-строки
+    "F7",   # синтаксис/условия
+    "F82",  # неопределённые имена
+    "F811", # повторное определение
+]

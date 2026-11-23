@@ -6,8 +6,15 @@
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/flask-3.0+-green.svg)](https://flask.palletsprojects.com/)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
+[![CI](https://github.com/andrey-geben/office_radio_overlay/actions/workflows/ci.yml/badge.svg)](https://github.com/andrey-geben/office_radio_overlay/actions/workflows/ci.yml)
 
 ---
+
+## 🖼️ Интерфейс
+
+![Главная панель Office Radio Overlay](docs/screenshots/main.png)
+
+![Страница входа](docs/screenshots/login.png)
 
 ## 🎯 Что это
 
@@ -239,7 +246,7 @@ CTCSS — аналоговый субтон 67–254 Гц (полная табл
 python -m unittest discover -s tests -v
 ```
 
-7 smoke-проверок: страница входа, защита API, поля статуса, `/stream` для сервера (403) и удалённого клиента (200), остановка эфира, рассылка веб-плеера нескольким подписчикам.
+15 smoke-проверок: страница входа, защита API, поля статуса, `/stream` для сервера (403) и удалённого клиента (200), остановка эфира, рассылка веб-плеера, SIP-приоритеты, переключение каналов и библиотека chime. В GitHub Actions дополнительно запускается `ruff check` на Python 3.10–3.12.
 
 ---
 
